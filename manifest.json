@@ -1,0 +1,35 @@
+{
+    "manifest_version": 3,
+    "name": "Proxy By LasT",
+    "version": "2.2.1",
+    "description": "Профессиональное управление прокси-соединениями с расширенным функционалом",
+    "permissions": ["proxy", "storage", "webRequest", "webRequestAuthProvider", "sidePanel"],
+    "host_permissions": ["<all_urls>"],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icon16.png",
+            "48": "icon48.png",
+            "128": "icon128.png"
+        }
+    },
+    "side_panel": {
+        "default_path": "popup.html"
+    },
+    "icons": {
+        "16": "icon16.png",
+        "48": "icon48.png",
+        "128": "icon128.png"
+    },
+    "commands": {
+        "_execute_action": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+P",
+                "mac": "Command+Shift+P"
+            }
+        }
+    }
+}
