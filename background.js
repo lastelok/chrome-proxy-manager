@@ -1,47 +1,34 @@
-// Хранилище для текущих настроек прокси
+// Текущие настройки прокси
 let currentProxy = null
 let authCredentials = null
 
-// Обновление индикатора статуса в иконке
+// Обновление индикатора статуса
 function updateBadge(isActive) {
-    if (isActive) {
-        chrome.action.setBadgeText({ text: '●' })
-        chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' }) // Зеленый
-        chrome.action.setTitle({ title: 'Proxy By LasT - Активно' })
-    } else {
-        chrome.action.setBadgeText({ text: '●' })
-        chrome.action.setBadgeBackgroundColor({ color: '#e74c3c' }) // Красный
-        chrome.action.setTitle({ title: 'Proxy By LasT - Отключено' })
-    }
+    chrome.action.setBadgeText({ text: '●' })
+    chrome.action.setBadgeBackgroundColor({ color: isActive ? '#4CAF50' : '#e74c3c' })
+    chrome.action.setTitle({ title: `Chrome Proxy Manager - ${isActive ? 'Активно' : 'Отключено'}` })
 }
 
-// Инициализация при первой установке
+// Инициализация
 chrome.runtime.onInstalled.addListener(() => {
     initializeExtension()
-
-    // Настройка боковой панели
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false })
 })
 
-// Восстановление настроек при запуске браузера
 chrome.runtime.onStartup.addListener(() => {
     initializeExtension()
 })
 
-// Функция инициализации расширения
+// Инициализация расширения
 function initializeExtension() {
     chrome.storage.local.get(['activeProfile', 'activeProfileId'], (result) => {
-        // Проверяем текущее состояние прокси
         chrome.proxy.settings.get({}, (config) => {
             const isProxyActive = config.value && config.value.mode !== 'direct' && config.value.mode !== 'system'
 
             if (result.activeProfile && result.activeProfileId) {
-                // Если есть сохраненный активный профиль
                 if (!isProxyActive) {
-                    // Прокси не активен, применяем профиль
                     applyProxyProfile(result.activeProfile)
                 } else {
-                    // Прокси уже активен, просто обновляем состояние
                     currentProxy = result.activeProfile
                     authCredentials = {
                         username: result.activeProfile.username,
@@ -49,25 +36,17 @@ function initializeExtension() {
                     }
                     updateBadge(true)
                 }
-            } else if (isProxyActive) {
-                // Если прокси активен, но нет сохраненного профиля
-                // Это может произойти после сброса настроек
-                // Оставляем прокси активным, но обновляем индикатор
-                updateBadge(true)
             } else {
-                // Прокси не активен и нет сохраненного профиля
-                updateBadge(false)
+                updateBadge(isProxyActive)
             }
         })
     })
 }
 
-// Обработка аутентификации прокси
+// Обработка аутентификации
 chrome.webRequest.onAuthRequired.addListener(
     (details, callback) => {
-        // Проверяем, что это запрос аутентификации от прокси
         if (authCredentials && authCredentials.username && authCredentials.password) {
-            console.log('Предоставляем учетные данные для прокси')
             callback({
                 authCredentials: {
                     username: authCredentials.username,
@@ -75,8 +54,6 @@ chrome.webRequest.onAuthRequired.addListener(
                 },
             })
         } else {
-            console.log('Нет учетных данных для прокси')
-            // Отменяем запрос если нет учетных данных
             callback({ cancel: true })
         }
     },
@@ -84,37 +61,24 @@ chrome.webRequest.onAuthRequired.addListener(
     ['asyncBlocking']
 )
 
-// Функция применения настроек прокси
+// Применение настроек прокси
 function applyProxyProfile(profile) {
     if (!profile) {
-        // Отключение прокси
         chrome.proxy.settings.clear({}, () => {
-            if (chrome.runtime.lastError) {
-                console.error('Ошибка при отключении прокси:', chrome.runtime.lastError.message)
-            } else {
-                currentProxy = null
-                authCredentials = null
-                updateBadge(false)
-                console.log('Прокси отключен')
-            }
+            currentProxy = null
+            authCredentials = null
+            updateBadge(false)
         })
         return
     }
 
-    // Проверка валидности данных
-    if (!profile.host || !profile.port) {
-        console.error('Некорректные данные прокси: отсутствует хост или порт')
-        updateBadge(false)
-        return
-    }
+    if (!profile.host || !profile.port) return
 
-    // Сохранение учетных данных для аутентификации
     authCredentials = {
         username: profile.username || '',
         password: profile.password || '',
     }
 
-    // Настройка прокси
     const config = {
         mode: 'fixed_servers',
         rules: {
@@ -129,23 +93,16 @@ function applyProxyProfile(profile) {
 
     chrome.proxy.settings.set({ value: config, scope: 'regular' }, () => {
         if (chrome.runtime.lastError) {
-            console.error('Ошибка установки прокси:', chrome.runtime.lastError.message)
             updateBadge(false)
-            // Уведомляем popup об ошибке
             chrome.runtime
                 .sendMessage({
                     action: 'proxyError',
                     error: chrome.runtime.lastError.message,
                 })
-                .catch(() => {
-                    // Игнорируем ошибку если popup закрыт
-                })
+                .catch(() => {})
         } else {
             currentProxy = profile
             updateBadge(true)
-            console.log('Прокси установлен:', profile.name)
-
-            // Сохраняем активный профиль
             chrome.storage.local.set({
                 activeProfile: profile,
                 activeProfileId: profile.id,
@@ -154,122 +111,58 @@ function applyProxyProfile(profile) {
     })
 }
 
-// Обработка сообщений от popup
+// Обработка сообщений
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'applyProxy') {
-        applyProxyProfile(request.profile)
-        sendResponse({ success: true })
-    } else if (request.action === 'disableProxy') {
-        applyProxyProfile(null)
-        // Очищаем сохраненные данные
-        chrome.storage.local.remove(['activeProfile', 'activeProfileId'])
-        sendResponse({ success: true })
-    } else if (request.action === 'getStatus') {
-        sendResponse({
-            isActive: currentProxy !== null,
-            currentProfile: currentProxy,
-        })
-    } else if (request.action === 'openSidePanel') {
-        chrome.sidePanel
-            .open({ windowId: request.windowId })
-            .then(() => {
-                sendResponse({ success: true })
+    switch (request.action) {
+        case 'applyProxy':
+            applyProxyProfile(request.profile)
+            sendResponse({ success: true })
+            break
+
+        case 'disableProxy':
+            applyProxyProfile(null)
+            chrome.storage.local.remove(['activeProfile', 'activeProfileId'])
+            sendResponse({ success: true })
+            break
+
+        case 'getStatus':
+            sendResponse({
+                isActive: currentProxy !== null,
+                currentProfile: currentProxy,
             })
-            .catch((error) => {
-                console.error('Ошибка открытия боковой панели:', error)
-                sendResponse({ success: false, error: error.message })
-            })
+            break
+
+        case 'openSidePanel':
+            chrome.sidePanel
+                .open({ windowId: request.windowId })
+                .then(() => sendResponse({ success: true }))
+                .catch((error) => sendResponse({ success: false, error: error.message }))
+            break
     }
     return true
 })
 
 // Обработка ошибок прокси
 chrome.proxy.onProxyError.addListener((details) => {
-    let errorMessage = 'Неизвестная ошибка прокси'
-
-    // Расшифровываем типичные ошибки
-    if (details.error) {
-        switch (details.error) {
-            case 'net::ERR_PROXY_CONNECTION_FAILED':
-                errorMessage = 'Не удалось подключиться к прокси-серверу'
-                break
-            case 'net::ERR_TUNNEL_CONNECTION_FAILED':
-                errorMessage = 'Ошибка туннельного соединения с прокси'
-                break
-            case 'net::ERR_PROXY_AUTH_UNSUPPORTED':
-                errorMessage = 'Тип авторизации прокси не поддерживается'
-                break
-            case 'net::ERR_MANDATORY_PROXY_CONFIGURATION_FAILED':
-                errorMessage = 'Ошибка конфигурации прокси'
-                break
-            case 'net::ERR_PROXY_AUTH_REQUESTED':
-                errorMessage = 'Требуется авторизация прокси (проверьте логин и пароль)'
-                break
-            case 'net::ERR_PROXY_CONNECTION_TIMEOUT':
-                errorMessage = 'Таймаут подключения к прокси'
-                break
-            default:
-                errorMessage = details.error.replace('net::', '').replace(/_/g, ' ').toLowerCase()
-        }
-    }
-
-    console.error('Ошибка прокси:')
-    console.error('- Ошибка:', errorMessage)
-    console.error('- Детали:', details.details || 'Нет дополнительных деталей')
-    console.error('- Фатальная:', details.fatal ? 'Да' : 'Нет')
-
-    // Обновляем значок только для фатальных ошибок
     if (details.fatal) {
         updateBadge(false)
-
-        // Отправляем сообщение в popup (если он открыт)
         chrome.runtime
             .sendMessage({
                 action: 'proxyError',
-                error: errorMessage,
+                error: details.error || 'Неизвестная ошибка прокси',
             })
-            .catch(() => {
-                // Игнорируем ошибку если popup закрыт
-            })
+            .catch(() => {})
     }
 })
 
-// Обработка изменений в настройках прокси (например, через другие расширения)
+// Обработка изменений в настройках прокси
 chrome.proxy.settings.onChange.addListener((details) => {
     const isProxyActive = details.value && details.value.mode !== 'direct' && details.value.mode !== 'system'
 
     if (!isProxyActive && currentProxy) {
-        // Прокси был отключен извне
-        console.log('Прокси был отключен извне')
         currentProxy = null
         authCredentials = null
         updateBadge(false)
-
-        // Очищаем сохраненные данные
         chrome.storage.local.remove(['activeProfile', 'activeProfileId'])
     }
-})
-
-// Периодическая проверка соединения
-let lastCheckStatus = null
-setInterval(() => {
-    if (currentProxy) {
-        const status = `Прокси активен: ${currentProxy.name} (${currentProxy.host}:${currentProxy.port})`
-        // Выводим в консоль только если статус изменился
-        if (status !== lastCheckStatus) {
-            console.log(status)
-            lastCheckStatus = status
-        }
-    } else {
-        if (lastCheckStatus !== null) {
-            console.log('Прокси не активен')
-            lastCheckStatus = null
-        }
-    }
-}, 60000) // каждые 60 секунд
-
-// Обработка обновления расширения
-chrome.runtime.onUpdateAvailable.addListener(() => {
-    console.log('Доступно обновление расширения')
-    // Можно добавить логику для уведомления пользователя
 })

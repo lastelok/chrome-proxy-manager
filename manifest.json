@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Proxy By LasT",
-    "version": "2.4.0",
-    "description": "Профессиональное управление прокси-соединениями с улучшенным дизайном и удобным интерфейсом",
+    "name": "Chrome Proxy Manager",
+    "version": "3.0.0",
+    "description": "Профессиональное управление прокси-соединениями",
     "permissions": ["proxy", "storage", "webRequest", "webRequestAuthProvider", "sidePanel"],
     "host_permissions": ["<all_urls>"],
     "background": {
@@ -23,14 +23,5 @@
         "16": "icon16.png",
         "48": "icon48.png",
         "128": "icon128.png"
-    },
-    "commands": {
-        "_execute_action": {
-            "suggested_key": {
-                "default": "Ctrl+Shift+P",
-                "mac": "Command+Shift+P"
-            },
-            "description": "Открыть Proxy By LasT"
-        }
     }
 }

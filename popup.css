@@ -8,12 +8,8 @@
     --primary-color: #4caf50;
     --primary-hover: #45a049;
     --success-color: #27ae60;
-    --success-hover: #229954;
     --danger-color: #e74c3c;
-    --danger-hover: #c0392b;
     --secondary-color: #6c757d;
-    --secondary-hover: #5a6268;
-    --warning-color: #ff9800;
     --background: #f8f9fa;
     --card-background: #ffffff;
     --text-primary: #212529;
@@ -23,56 +19,23 @@
     --border-radius: 12px;
     --border-radius-small: 8px;
     --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    --shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.15);
     --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Предотвращение выделения текста где не нужно */
-body,
-button,
-.status-section,
-.profiles-section,
-.header,
-.profile-item,
-.modal {
-    user-select: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-}
-
-/* Разрешение выделения в полях ввода и текстовых областях */
-input,
-textarea,
-.import-info {
-    user-select: text;
-    -webkit-user-select: text;
-    -moz-user-select: text;
-    -ms-user-select: text;
 }
 
 body {
     width: 480px;
-    min-height: 600px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: linear-gradient(135deg, var(--background) 0%, #e9ecef 100%);
+    height: 600px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: var(--background);
     color: var(--text-primary);
     line-height: 1.6;
     font-size: 14px;
-}
-
-/* Адаптация для боковой панели */
-@media (max-width: 400px) {
-    body {
-        width: 100%;
-        min-width: 320px;
-    }
+    overflow-y: auto;
 }
 
 .container {
     padding: 20px;
-    background: var(--background);
-    min-height: 100vh;
+    min-height: 100%;
 }
 
 /* Заголовок */
@@ -96,11 +59,14 @@ h2 {
     background-clip: text;
 }
 
-.header-buttons {
-    display: flex;
-    gap: 8px;
+h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-primary);
 }
 
+/* Кнопки иконок */
 .icon-btn {
     width: 40px;
     height: 40px;
@@ -114,41 +80,12 @@ h2 {
     justify-content: center;
     transition: var(--transition);
     box-shadow: var(--shadow);
-    position: relative;
-    overflow: hidden;
-}
-
-.icon-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-    transition: left 0.5s;
-}
-
-.icon-btn:hover::before {
-    left: 100%;
 }
 
 .icon-btn:hover {
     background: var(--primary-color);
     color: white;
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-hover);
-}
-
-.icon-btn:active {
-    transform: translateY(-1px);
-}
-
-h3 {
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: var(--text-primary);
+    transform: translateY(-2px);
 }
 
 /* Статус подключения */
@@ -162,25 +99,32 @@ h3 {
     justify-content: space-between;
     align-items: center;
     border: 1px solid var(--border-color);
-    position: relative;
-    overflow: hidden;
-}
-
-.status-section::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--danger-color), var(--warning-color), var(--success-color));
-    opacity: 0.3;
 }
 
 .status-indicator {
     display: flex;
     align-items: center;
     gap: 14px;
+}
+
+.status-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: var(--danger-color);
+    transition: var(--transition);
+    box-shadow: 0 0 0 6px rgba(231, 76, 60, 0.15);
+}
+
+.status-indicator.active .status-dot {
+    background-color: var(--success-color);
+    box-shadow: 0 0 0 6px rgba(39, 174, 96, 0.15);
+}
+
+.status-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .quick-disable-btn {
@@ -195,89 +139,14 @@ h3 {
     align-items: center;
     justify-content: center;
     transition: var(--transition);
-    opacity: 0.9;
-    position: relative;
-}
-
-.quick-disable-btn::after {
-    content: '';
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: var(--danger-color);
-    transform: scale(0);
-    transition: transform 0.3s ease;
-}
-
-.quick-disable-btn:hover::after {
-    transform: scale(1.2);
-    opacity: 0.3;
 }
 
 .quick-disable-btn:hover {
-    opacity: 1;
     transform: scale(1.1);
-    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
 }
 
 .quick-disable-btn.hidden {
     display: none;
-}
-
-.status-dot {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background-color: var(--danger-color);
-    transition: var(--transition);
-    box-shadow: 0 0 0 6px rgba(231, 76, 60, 0.15);
-    position: relative;
-}
-
-.status-dot::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 8px;
-    height: 8px;
-    background: white;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    opacity: 0.8;
-}
-
-.status-indicator.active .status-dot {
-    background-color: var(--success-color);
-    box-shadow: 0 0 0 6px rgba(39, 174, 96, 0.15);
-    animation: pulse-success 2s infinite;
-}
-
-.status-indicator.direct .status-dot {
-    background-color: var(--primary-color);
-    box-shadow: 0 0 0 6px rgba(76, 175, 80, 0.15);
-}
-
-@keyframes pulse-success {
-    0% {
-        transform: scale(1);
-        box-shadow: 0 0 0 6px rgba(39, 174, 96, 0.15);
-    }
-    50% {
-        transform: scale(1.1);
-        box-shadow: 0 0 0 12px rgba(39, 174, 96, 0.1);
-    }
-    100% {
-        transform: scale(1);
-        box-shadow: 0 0 0 6px rgba(39, 174, 96, 0.15);
-    }
-}
-
-.status-text {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
 }
 
 /* Секция профилей */
@@ -288,10 +157,6 @@ h3 {
     margin-bottom: 20px;
     box-shadow: var(--shadow);
     border: 1px solid var(--border-color);
-}
-
-.profiles-section.visible {
-    display: block !important;
 }
 
 .profiles-header {
@@ -311,16 +176,6 @@ h3 {
     gap: 8px;
 }
 
-.profiles-header h3::before {
-    content: '🔗';
-    font-size: 20px;
-}
-
-.profiles-header .btn-group {
-    display: flex;
-    gap: 8px;
-}
-
 .profiles-count {
     font-size: 13px;
     color: var(--text-muted);
@@ -334,19 +189,16 @@ h3 {
     font-size: 13px;
     color: var(--text-muted);
     margin: 0 0 16px 0;
-    font-style: italic;
     text-align: center;
     padding: 8px;
     background: var(--background);
     border-radius: var(--border-radius-small);
-    border-left: 4px solid var(--primary-color);
 }
 
 .profiles-list {
     margin-bottom: 20px;
     max-height: 300px;
     overflow-y: auto;
-    padding: 2px;
 }
 
 .profile-item {
@@ -359,81 +211,19 @@ h3 {
     border-radius: var(--border-radius-small);
     transition: var(--transition);
     border: 2px solid transparent;
-    position: relative;
     cursor: pointer;
-    overflow: hidden;
-}
-
-.profile-item::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(76, 175, 80, 0.1), transparent);
-    transition: left 0.5s ease;
-}
-
-.profile-item:hover::before {
-    left: 100%;
-}
-
-.profile-item::after {
-    content: '👆 Нажмите для активации';
-    position: absolute;
-    left: 16px;
-    bottom: -22px;
-    font-size: 11px;
-    color: var(--text-muted);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    background: var(--card-background);
-    padding: 2px 6px;
-    border-radius: 4px;
-    box-shadow: var(--shadow);
-    z-index: 10;
-}
-
-.profile-item:not(.active):hover::after {
-    opacity: 1;
 }
 
 .profile-item:hover {
     background: var(--card-background);
     border-color: var(--primary-color);
     transform: translateY(-2px);
-    box-shadow: var(--shadow-hover);
-    z-index: 5;
 }
 
 .profile-item.active {
     background: linear-gradient(135deg, var(--primary-color), var(--success-color));
     color: white;
     border-color: var(--primary-color);
-    box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
-    animation: activateProfile 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-}
-
-@keyframes activateProfile {
-    0% {
-        transform: scale(0.9) rotate(-1deg);
-        opacity: 0.7;
-    }
-    50% {
-        transform: scale(1.05) rotate(1deg);
-    }
-    100% {
-        transform: scale(1) rotate(0deg);
-        opacity: 1;
-    }
-}
-
-.profile-item.active::after {
-    content: '✓ Активен';
-    opacity: 1;
-    color: rgba(255, 255, 255, 0.9);
-    background: rgba(0, 0, 0, 0.2);
 }
 
 .profile-info {
@@ -444,15 +234,6 @@ h3 {
     font-weight: 600;
     margin-bottom: 6px;
     font-size: 15px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.profile-name::before {
-    content: '🌐';
-    font-size: 14px;
-    opacity: 0.7;
 }
 
 .profile-details {
@@ -462,7 +243,6 @@ h3 {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
 }
 
 .profile-type {
@@ -472,16 +252,12 @@ h3 {
     border-radius: 12px;
     font-size: 10px;
     font-weight: 600;
-    letter-spacing: 0.5px;
     text-transform: uppercase;
 }
 
 .auth-badge {
     font-size: 12px;
     opacity: 0.8;
-    background: rgba(255, 193, 7, 0.2);
-    padding: 2px 4px;
-    border-radius: 4px;
 }
 
 .profile-item.active .profile-details {
@@ -490,12 +266,6 @@ h3 {
 
 .profile-item.active .profile-type {
     background: rgba(255, 255, 255, 0.2);
-    color: white;
-}
-
-.profile-item.active .auth-badge {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
 }
 
 .profile-actions {
@@ -521,79 +291,35 @@ h3 {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    position: relative;
-    overflow: hidden;
-    text-decoration: none;
-    border: 2px solid transparent;
-}
-
-.btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s ease;
-}
-
-.btn:hover::before {
-    left: 100%;
 }
 
 .btn:hover {
     transform: translateY(-2px);
-    box-shadow: var(--shadow-hover);
-}
-
-.btn:active {
-    transform: translateY(0);
 }
 
 .btn-primary {
     background: var(--primary-color);
     color: white;
-    border-color: var(--primary-color);
 }
 
 .btn-primary:hover {
     background: var(--primary-hover);
-    border-color: var(--primary-hover);
 }
 
 .btn-success {
     background: var(--success-color);
     color: white;
-    border-color: var(--success-color);
-}
-
-.btn-success:hover {
-    background: var(--success-hover);
-    border-color: var(--success-hover);
 }
 
 .btn-secondary {
     background: var(--secondary-color);
     color: white;
-    border-color: var(--secondary-color);
-}
-
-.btn-secondary:hover {
-    background: var(--secondary-hover);
-    border-color: var(--secondary-hover);
 }
 
 .btn-danger {
     background: var(--danger-color);
     color: white;
     width: 100%;
-    border-color: var(--danger-color);
-}
-
-.btn-danger:hover {
-    background: var(--danger-hover);
-    border-color: var(--danger-hover);
 }
 
 .btn-small {
@@ -601,7 +327,7 @@ h3 {
     font-size: 12px;
 }
 
-/* Форма */
+/* Формы */
 .profile-form,
 .import-form {
     background: var(--card-background);
@@ -638,7 +364,6 @@ h3 {
     font-size: 14px;
     transition: var(--transition);
     background: var(--background);
-    font-family: inherit;
 }
 
 .form-group input:focus,
@@ -646,11 +371,6 @@ h3 {
     outline: none;
     border-color: var(--primary-color);
     background: white;
-    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
-}
-
-.form-select {
-    cursor: pointer;
 }
 
 .form-buttons {
@@ -669,13 +389,11 @@ h3 {
     padding: 20px;
     border-radius: var(--border-radius-small);
     margin-bottom: 20px;
-    border-left: 4px solid var(--primary-color);
 }
 
 .import-info p {
     margin: 0 0 12px 0;
     font-weight: 600;
-    color: var(--text-primary);
 }
 
 .import-info ul {
@@ -687,13 +405,7 @@ h3 {
     margin: 6px 0;
     color: var(--text-secondary);
     font-size: 13px;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    background: rgba(76, 175, 80, 0.05);
-    padding: 2px 6px;
-    border-radius: 4px;
-    display: inline-block;
-    margin-right: 8px;
-    margin-bottom: 4px;
+    font-family: monospace;
 }
 
 #importText {
@@ -701,37 +413,22 @@ h3 {
     padding: 16px;
     border: 2px solid var(--border-color);
     border-radius: var(--border-radius-small);
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-family: monospace;
     font-size: 13px;
     resize: vertical;
     background: var(--background);
-    transition: var(--transition);
-    line-height: 1.5;
 }
 
 #importText:focus {
     outline: none;
     border-color: var(--primary-color);
     background: white;
-    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
 }
 
 /* Нижняя секция */
 .bottom-section {
     margin-top: 24px;
     display: none;
-    animation: slideIn 0.3s ease-out;
-}
-
-@keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 /* Модальное окно */
@@ -746,7 +443,6 @@ h3 {
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    backdrop-filter: blur(8px);
 }
 
 .modal.hidden {
@@ -760,24 +456,10 @@ h3 {
     max-width: 420px;
     width: 90%;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    animation: modalIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    border: 1px solid var(--border-color);
-}
-
-@keyframes modalIn {
-    from {
-        opacity: 0;
-        transform: translateY(-50px) scale(0.8);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
 }
 
 .modal-content h3 {
     margin-bottom: 20px;
-    color: var(--text-primary);
 }
 
 .modal-content p {
@@ -796,29 +478,18 @@ h3 {
     flex: 1;
 }
 
-.modal-buttons button:only-child {
-    max-width: 140px;
-    margin: 0 auto;
-}
-
 /* Скроллбар */
-.profiles-list::-webkit-scrollbar {
+::-webkit-scrollbar {
     width: 8px;
 }
 
-.profiles-list::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
     background: var(--background);
-    border-radius: 4px;
 }
 
-.profiles-list::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
     background: var(--border-color);
     border-radius: 4px;
-    transition: var(--transition);
-}
-
-.profiles-list::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
 }
 
 /* Пустое сообщение */
@@ -830,24 +501,6 @@ h3 {
     background: var(--background);
     border-radius: var(--border-radius-small);
     border: 2px dashed var(--border-color);
-    position: relative;
-}
-
-.empty-message::before {
-    content: '📋';
-    display: block;
-    font-size: 48px;
-    margin-bottom: 16px;
-    opacity: 0.5;
-}
-
-.empty-message::after {
-    content: '👇 Нажмите кнопку ниже чтобы добавить прокси';
-    display: block;
-    margin-top: 12px;
-    font-size: 12px;
-    opacity: 0.7;
-    color: var(--text-muted);
 }
 
 /* Иконки */
@@ -856,46 +509,13 @@ h3 {
     font-weight: bold;
 }
 
-/* Анимации загрузки */
+/* Загрузка */
 .loading {
     opacity: 0.6;
     pointer-events: none;
-    position: relative;
 }
 
-.loading::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 20px;
-    height: 20px;
-    margin: -10px 0 0 -10px;
-    border: 2px solid var(--text-muted);
-    border-top: 2px solid var(--primary-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
-}
-
-/* Улучшения для доступности */
-@media (prefers-reduced-motion: reduce) {
-    * {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-    }
-}
-
-/* Темная тема (если поддерживается системой) */
+/* Темная тема */
 @media (prefers-color-scheme: dark) {
     :root {
         --background: #1a1a1a;

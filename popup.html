@@ -3,14 +3,13 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Proxy By LasT</title>
+        <title>Chrome Proxy Manager</title>
         <link rel="stylesheet" href="popup.css" />
     </head>
     <body>
         <div class="container">
-            <!-- Заголовок с кнопкой управления -->
             <div class="header">
-                <h2>Proxy By LasT</h2>
+                <h2>Chrome Proxy Manager</h2>
                 <div class="header-buttons">
                     <button id="openSidePanelBtn" class="icon-btn" title="Открыть в боковой панели">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -21,7 +20,6 @@
                 </div>
             </div>
 
-            <!-- Статус подключения -->
             <div class="status-section">
                 <div class="status-indicator" id="statusIndicator">
                     <span class="status-dot"></span>
@@ -36,7 +34,6 @@
                 </button>
             </div>
 
-            <!-- Список профилей (всегда видимый) -->
             <div class="profiles-section visible">
                 <div class="profiles-header">
                     <h3>Профили прокси <span id="profilesCount" class="profiles-count"></span></h3>
@@ -63,7 +60,6 @@
                 <button id="addProfileBtn" class="btn btn-primary"><span class="icon">+</span> Добавить профиль</button>
             </div>
 
-            <!-- Форма добавления/редактирования профиля -->
             <div id="profileForm" class="profile-form hidden">
                 <h3 id="formTitle">Новый профиль</h3>
                 <form id="proxyForm">
@@ -110,7 +106,6 @@
                 </form>
             </div>
 
-            <!-- Форма импорта -->
             <div id="importForm" class="import-form hidden">
                 <h3>Импорт прокси</h3>
                 <div class="import-info">
@@ -118,7 +113,6 @@
                     <ul>
                         <li>user:pass@ip:port</li>
                         <li>ip:port:user:pass</li>
-                        <li>user:pass:ip:port</li>
                         <li>ip:port (без авторизации)</li>
                         <li>Название: любой_формат</li>
                         <li>SOCKS5 192.168.1.1:1080</li>
@@ -132,9 +126,7 @@
 user:pass@192.168.1.1:8080
 192.168.1.1:8080:user:pass
 Домашний: user:pass@10.0.0.1:3128
-Рабочий: 192.168.0.1:8888
-SOCKS5 192.168.1.1:1080
-Мой SOCKS: SOCKS4 10.0.0.1:1080"
+SOCKS5 192.168.1.1:1080"
                     rows="10"
                 ></textarea>
                 <div class="form-buttons">
@@ -143,12 +135,10 @@ SOCKS5 192.168.1.1:1080
                 </div>
             </div>
 
-            <!-- Кнопка отключения прокси -->
             <div class="bottom-section">
                 <button id="disableProxyBtn" class="btn btn-danger">Отключить прокси</button>
             </div>
 
-            <!-- Модальное окно подтверждения -->
             <div id="confirmModal" class="modal hidden">
                 <div class="modal-content">
                     <h3>Подтверждение</h3>
