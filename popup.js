@@ -7,6 +7,7 @@ const proxyForm = document.getElementById('proxyForm')
 const cancelBtn = document.getElementById('cancelBtn')
 const disableProxyBtn = document.getElementById('disableProxyBtn')
 const quickDisableBtn = document.getElementById('quickDisableBtn')
+const directConnectionBtn = document.getElementById('directConnectionBtn')
 const formTitle = document.getElementById('formTitle')
 const importBtn = document.getElementById('importBtn')
 const exportBtn = document.getElementById('exportBtn')
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     proxyForm.addEventListener('submit', handleFormSubmit)
     disableProxyBtn.addEventListener('click', handleDisableProxy)
     quickDisableBtn.addEventListener('click', handleDisableProxy)
+    directConnectionBtn.addEventListener('click', handleDisableProxy)
     importBtn.addEventListener('click', showImportForm)
     exportBtn.addEventListener('click', exportProfiles)
     processImportBtn.addEventListener('click', processImport)
@@ -88,11 +90,13 @@ function updateStatus() {
             statusText.textContent = `Подключено: ${response.currentProfile.name}`
             activeProfileId = response.currentProfile.id
             quickDisableBtn.classList.remove('hidden')
+            directConnectionBtn.classList.add('hidden')
         } else {
             statusIndicator.classList.remove('active')
             statusText.textContent = 'Прямое подключение'
             activeProfileId = null
             quickDisableBtn.classList.add('hidden')
+            directConnectionBtn.classList.remove('hidden')
         }
 
         updateDisableButton()
@@ -331,7 +335,7 @@ function handleFormSubmit(e) {
     hideProfileForm()
 }
 
-// Парсинг прокси
+// Улучшенная функция парсинга прокси
 function parseProxy(line) {
     line = line.trim()
     if (!line) return null
@@ -339,25 +343,34 @@ function parseProxy(line) {
     let customName = null
     let proxyType = 'http'
 
-    // Проверяем название
-    const nameMatch = line.match(/^([^:@]+):\s*(.+)$/)
-    if (nameMatch && !nameMatch[1].includes('.') && !nameMatch[2].startsWith(nameMatch[1])) {
-        customName = nameMatch[1].trim()
-        line = nameMatch[2].trim()
+    // Проверяем название в формате "Название: прокси_данные"
+    const nameMatch = line.match(/^([^:]+?):\s*(.+)$/)
+    if (nameMatch) {
+        const potentialName = nameMatch[1].trim()
+        const potentialProxy = nameMatch[2].trim()
+
+        // Проверяем, что это действительно название, а не часть прокси
+        // Название не должно содержать точки (как в IP) и не должно быть числом
+        if (!potentialName.includes('.') && !potentialName.includes('@') && isNaN(parseInt(potentialName))) {
+            // Проверяем, что потенциальные прокси данные содержат IP или домен
+            if (potentialProxy.match(/\d+\.\d+\.\d+\.\d+/) || potentialProxy.includes('@') || potentialProxy.includes(':')) {
+                customName = potentialName
+                line = potentialProxy
+            }
+        }
     }
 
-    // Проверяем тип
+    // Проверяем тип прокси в начале строки
     const typeMatch = line.match(/^(socks5|socks4|http|https)\s+(.+)$/i)
     if (typeMatch) {
         proxyType = typeMatch[1].toLowerCase()
         line = typeMatch[2].trim()
     }
 
-    // Парсим прокси
     let result = null
 
-    // user:pass@ip:port
-    const authMatch = line.match(/^([^:@]+):([^:@]+)@([^:]+):(\d+)$/)
+    // Формат: user:pass@ip:port
+    const authMatch = line.match(/^([^:@]+):([^:@]+)@([^:@]+):(\d+)$/)
     if (authMatch) {
         result = {
             username: authMatch[1],
@@ -368,7 +381,7 @@ function parseProxy(line) {
         }
     }
 
-    // ip:port:user:pass
+    // Формат: ip:port:user:pass
     if (!result) {
         const colonMatch = line.match(/^([^:]+):(\d+):([^:]+):(.+)$/)
         if (colonMatch) {
@@ -382,7 +395,7 @@ function parseProxy(line) {
         }
     }
 
-    // ip:port
+    // Формат: ip:port
     if (!result) {
         const simpleMatch = line.match(/^([^:]+):(\d+)$/)
         if (simpleMatch) {
