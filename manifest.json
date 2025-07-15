@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Proxy By LasT",
-    "version": "2.2.1",
+    "version": "2.3.0",
     "description": "Профессиональное управление прокси-соединениями с расширенным функционалом",
     "permissions": ["proxy", "storage", "webRequest", "webRequestAuthProvider", "sidePanel"],
     "host_permissions": ["<all_urls>"],

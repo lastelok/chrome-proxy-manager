@@ -65,7 +65,9 @@ function initializeExtension() {
 // Обработка аутентификации прокси
 chrome.webRequest.onAuthRequired.addListener(
     (details, callback) => {
+        // Проверяем, что это запрос аутентификации от прокси
         if (authCredentials && authCredentials.username && authCredentials.password) {
+            console.log('Предоставляем учетные данные для прокси')
             callback({
                 authCredentials: {
                     username: authCredentials.username,
@@ -73,7 +75,9 @@ chrome.webRequest.onAuthRequired.addListener(
                 },
             })
         } else {
-            callback({})
+            console.log('Нет учетных данных для прокси')
+            // Отменяем запрос если нет учетных данных
+            callback({ cancel: true })
         }
     },
     { urls: ['<all_urls>'] },
@@ -115,7 +119,7 @@ function applyProxyProfile(profile) {
         mode: 'fixed_servers',
         rules: {
             singleProxy: {
-                scheme: 'http',
+                scheme: profile.type || 'http',
                 host: profile.host,
                 port: parseInt(profile.port),
             },
@@ -170,14 +174,42 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Обработка ошибок прокси
 chrome.proxy.onProxyError.addListener((details) => {
+    let errorMessage = 'Неизвестная ошибка прокси'
+
+    // Расшифровываем типичные ошибки
+    if (details.error) {
+        switch (details.error) {
+            case 'net::ERR_PROXY_CONNECTION_FAILED':
+                errorMessage = 'Не удалось подключиться к прокси-серверу'
+                break
+            case 'net::ERR_TUNNEL_CONNECTION_FAILED':
+                errorMessage = 'Ошибка туннельного соединения с прокси'
+                break
+            case 'net::ERR_PROXY_AUTH_UNSUPPORTED':
+                errorMessage = 'Тип авторизации прокси не поддерживается'
+                break
+            case 'net::ERR_MANDATORY_PROXY_CONFIGURATION_FAILED':
+                errorMessage = 'Ошибка конфигурации прокси'
+                break
+            default:
+                errorMessage = details.error
+        }
+    }
+
     console.error('Ошибка прокси:')
-    console.error('- Ошибка:', details.error)
-    console.error('- Детали:', details.details)
-    console.error('- Фатальная:', details.fatal)
+    console.error('- Ошибка:', errorMessage)
+    console.error('- Детали:', details.details || 'Нет дополнительных деталей')
+    console.error('- Фатальная:', details.fatal ? 'Да' : 'Нет')
 
     // Обновляем значок только для фатальных ошибок
     if (details.fatal) {
         updateBadge(false)
+
+        // Отправляем сообщение в popup
+        chrome.runtime.sendMessage({
+            action: 'proxyError',
+            error: errorMessage,
+        })
     }
 })
 

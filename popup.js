@@ -48,6 +48,11 @@ function exportProfiles() {
         // Добавляем название профиля
         line += profile.name + ': '
 
+        // Добавляем тип если не HTTP
+        if (profile.type && profile.type !== 'http') {
+            line += profile.type.toUpperCase() + ' '
+        }
+
         // Формат user:pass@ip:port или ip:port
         if (profile.username && profile.password) {
             line += `${profile.username}:${profile.password}@${profile.host}:${profile.port}`
@@ -245,6 +250,7 @@ function renderProfiles() {
         <div class="profile-info">
           <div class="profile-name">${profile.name}</div>
           <div class="profile-details">
+            <span class="profile-type">${(profile.type || 'HTTP').toUpperCase()}</span>
             ${profile.host}:${profile.port}
             ${profile.username ? '<span class="auth-badge">🔐</span>' : ''}
           </div>
@@ -344,6 +350,8 @@ function showAddProfileForm() {
     editingProfileId = null
     formTitle.textContent = 'Новый профиль'
     proxyForm.reset()
+    // Устанавливаем значение по умолчанию для типа прокси
+    document.getElementById('proxyType').value = 'http'
     profileForm.classList.remove('hidden')
     addProfileBtn.style.display = 'none'
 }
@@ -358,10 +366,16 @@ function hideProfileForm() {
 // Копирование профиля в буфер обмена
 function copyProfile(profile) {
     let text = ''
+
+    // Добавляем тип если не HTTP
+    if (profile.type && profile.type !== 'http') {
+        text += profile.type.toUpperCase() + ' '
+    }
+
     if (profile.username && profile.password) {
-        text = `${profile.username}:${profile.password}@${profile.host}:${profile.port}`
+        text += `${profile.username}:${profile.password}@${profile.host}:${profile.port}`
     } else {
-        text = `${profile.host}:${profile.port}`
+        text += `${profile.host}:${profile.port}`
     }
 
     navigator.clipboard
@@ -396,6 +410,7 @@ function editProfile(profileId) {
 
     // Заполнение формы
     document.getElementById('profileName').value = profile.name
+    document.getElementById('proxyType').value = profile.type || 'http'
     document.getElementById('proxyHost').value = profile.host
     document.getElementById('proxyPort').value = profile.port
     document.getElementById('proxyUsername').value = profile.username || ''
@@ -425,10 +440,33 @@ function handleFormSubmit(e) {
 
     const formData = {
         name: document.getElementById('profileName').value.trim(),
+        type: document.getElementById('proxyType').value,
         host: document.getElementById('proxyHost').value.trim(),
         port: document.getElementById('proxyPort').value.trim(),
         username: document.getElementById('proxyUsername').value.trim(),
         password: document.getElementById('proxyPassword').value.trim(),
+    }
+
+    // Валидация данных
+    if (!formData.name || !formData.host || !formData.port) {
+        alert('Пожалуйста, заполните обязательные поля')
+        return
+    }
+
+    // Проверка порта
+    const port = parseInt(formData.port)
+    if (isNaN(port) || port < 1 || port > 65535) {
+        alert('Порт должен быть числом от 1 до 65535')
+        return
+    }
+
+    // Проверка IP адреса или домена
+    const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/
+    const domainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](?:\.[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9])*$/
+
+    if (!ipPattern.test(formData.host) && !domainPattern.test(formData.host)) {
+        alert('Введите корректный IP адрес или доменное имя')
+        return
     }
 
     if (editingProfileId) {
@@ -576,6 +614,7 @@ function processImport() {
         if (proxyData) {
             const newProfile = {
                 name: proxyData.customName || `Прокси ${profiles.length + imported + 1}`,
+                type: proxyData.type || 'http',
                 host: proxyData.host,
                 port: proxyData.port,
                 username: proxyData.username,
