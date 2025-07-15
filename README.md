@@ -14,7 +14,7 @@
 
 ## 🚀 Установка
 
-1. Скачайте ZIP-архив с релизом (Вверху справа)
+1. Скачайте ZIP-архив с релизом по ссылке: [https://github.com/lastelok/chrome-proxy-manager/archive/refs/heads/main.zip](https://github.com/lastelok/chrome-proxy-manager/archive/refs/heads/main.zip)
 2. Распакуйте архив в удобную папку.
 3. Откройте Google Chrome и перейдите на `chrome://extensions/`.
 4. Включите режим разработчика (Developer mode).
