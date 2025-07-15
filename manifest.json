@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "Proxy By LasT",
-    "version": "2.3.0",
-    "description": "Профессиональное управление прокси-соединениями с расширенным функционалом",
+    "version": "2.4.0",
+    "description": "Профессиональное управление прокси-соединениями с улучшенным дизайном и удобным интерфейсом",
     "permissions": ["proxy", "storage", "webRequest", "webRequestAuthProvider", "sidePanel"],
     "host_permissions": ["<all_urls>"],
     "background": {
@@ -29,7 +29,8 @@
             "suggested_key": {
                 "default": "Ctrl+Shift+P",
                 "mac": "Command+Shift+P"
-            }
+            },
+            "description": "Открыть Proxy By LasT"
         }
     }
 }

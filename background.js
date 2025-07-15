@@ -6,7 +6,7 @@ let authCredentials = null
 function updateBadge(isActive) {
     if (isActive) {
         chrome.action.setBadgeText({ text: '●' })
-        chrome.action.setBadgeBackgroundColor({ color: '#27ae60' }) // Зеленый
+        chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' }) // Зеленый
         chrome.action.setTitle({ title: 'Proxy By LasT - Активно' })
     } else {
         chrome.action.setBadgeText({ text: '●' })
@@ -132,10 +132,14 @@ function applyProxyProfile(profile) {
             console.error('Ошибка установки прокси:', chrome.runtime.lastError.message)
             updateBadge(false)
             // Уведомляем popup об ошибке
-            chrome.runtime.sendMessage({
-                action: 'proxyError',
-                error: chrome.runtime.lastError.message,
-            })
+            chrome.runtime
+                .sendMessage({
+                    action: 'proxyError',
+                    error: chrome.runtime.lastError.message,
+                })
+                .catch(() => {
+                    // Игнорируем ошибку если popup закрыт
+                })
         } else {
             currentProxy = profile
             updateBadge(true)
@@ -166,8 +170,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             currentProfile: currentProxy,
         })
     } else if (request.action === 'openSidePanel') {
-        chrome.sidePanel.open({ windowId: request.windowId })
-        sendResponse({ success: true })
+        chrome.sidePanel
+            .open({ windowId: request.windowId })
+            .then(() => {
+                sendResponse({ success: true })
+            })
+            .catch((error) => {
+                console.error('Ошибка открытия боковой панели:', error)
+                sendResponse({ success: false, error: error.message })
+            })
     }
     return true
 })
@@ -191,8 +202,14 @@ chrome.proxy.onProxyError.addListener((details) => {
             case 'net::ERR_MANDATORY_PROXY_CONFIGURATION_FAILED':
                 errorMessage = 'Ошибка конфигурации прокси'
                 break
+            case 'net::ERR_PROXY_AUTH_REQUESTED':
+                errorMessage = 'Требуется авторизация прокси (проверьте логин и пароль)'
+                break
+            case 'net::ERR_PROXY_CONNECTION_TIMEOUT':
+                errorMessage = 'Таймаут подключения к прокси'
+                break
             default:
-                errorMessage = details.error
+                errorMessage = details.error.replace('net::', '').replace(/_/g, ' ').toLowerCase()
         }
     }
 
@@ -205,11 +222,31 @@ chrome.proxy.onProxyError.addListener((details) => {
     if (details.fatal) {
         updateBadge(false)
 
-        // Отправляем сообщение в popup
-        chrome.runtime.sendMessage({
-            action: 'proxyError',
-            error: errorMessage,
-        })
+        // Отправляем сообщение в popup (если он открыт)
+        chrome.runtime
+            .sendMessage({
+                action: 'proxyError',
+                error: errorMessage,
+            })
+            .catch(() => {
+                // Игнорируем ошибку если popup закрыт
+            })
+    }
+})
+
+// Обработка изменений в настройках прокси (например, через другие расширения)
+chrome.proxy.settings.onChange.addListener((details) => {
+    const isProxyActive = details.value && details.value.mode !== 'direct' && details.value.mode !== 'system'
+
+    if (!isProxyActive && currentProxy) {
+        // Прокси был отключен извне
+        console.log('Прокси был отключен извне')
+        currentProxy = null
+        authCredentials = null
+        updateBadge(false)
+
+        // Очищаем сохраненные данные
+        chrome.storage.local.remove(['activeProfile', 'activeProfileId'])
     }
 })
 
@@ -217,7 +254,7 @@ chrome.proxy.onProxyError.addListener((details) => {
 let lastCheckStatus = null
 setInterval(() => {
     if (currentProxy) {
-        const status = `Прокси активен: ${currentProxy.name}`
+        const status = `Прокси активен: ${currentProxy.name} (${currentProxy.host}:${currentProxy.port})`
         // Выводим в консоль только если статус изменился
         if (status !== lastCheckStatus) {
             console.log(status)
@@ -229,4 +266,10 @@ setInterval(() => {
             lastCheckStatus = null
         }
     }
-}, 30000) // каждые 30 секунд
+}, 60000) // каждые 60 секунд
+
+// Обработка обновления расширения
+chrome.runtime.onUpdateAvailable.addListener(() => {
+    console.log('Доступно обновление расширения')
+    // Можно добавить логику для уведомления пользователя
+})

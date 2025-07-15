@@ -37,7 +37,7 @@ function handleConfirmNo() {
 // Экспорт профилей
 function exportProfiles() {
     if (profiles.length === 0) {
-        alert('Нет профилей для экспорта')
+        showConfirmDialog('Нет профилей для экспорта', null)
         return
     }
 
@@ -81,19 +81,22 @@ function exportProfiles() {
 // Открыть в боковой панели
 function openInSidePanel() {
     chrome.windows.getCurrent((window) => {
-        chrome.runtime.sendMessage({
-            action: 'openSidePanel',
-            windowId: window.id,
-        })
+        chrome.runtime.sendMessage(
+            {
+                action: 'openSidePanel',
+                windowId: window.id,
+            },
+            () => {
+                // Закрываем popup после открытия боковой панели
+                if (window.close) {
+                    window.close()
+                }
+            }
+        )
     })
 }
 
-// Открыть на весь экран
-function openInFullscreen() {
-    chrome.tabs.create({
-        url: chrome.runtime.getURL('popup.html'),
-    })
-} // Элементы DOM
+// Элементы DOM
 const statusIndicator = document.getElementById('statusIndicator')
 const profilesList = document.getElementById('profilesList')
 const addProfileBtn = document.getElementById('addProfileBtn')
@@ -114,7 +117,6 @@ const confirmMessage = document.getElementById('confirmMessage')
 const confirmYes = document.getElementById('confirmYes')
 const confirmNo = document.getElementById('confirmNo')
 const openSidePanelBtn = document.getElementById('openSidePanelBtn')
-const openFullscreenBtn = document.getElementById('openFullscreenBtn')
 
 // Состояние
 let profiles = []
@@ -140,7 +142,26 @@ document.addEventListener('DOMContentLoaded', () => {
     confirmYes.addEventListener('click', handleConfirmYes)
     confirmNo.addEventListener('click', handleConfirmNo)
     openSidePanelBtn.addEventListener('click', openInSidePanel)
-    openFullscreenBtn.addEventListener('click', openInFullscreen)
+
+    // Обработчик клика вне модального окна для его закрытия
+    confirmModal.addEventListener('click', (e) => {
+        if (e.target === confirmModal) {
+            handleConfirmNo()
+        }
+    })
+
+    // Обработчик Escape для закрытия модального окна
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (!confirmModal.classList.contains('hidden')) {
+                handleConfirmNo()
+            } else if (!profileForm.classList.contains('hidden')) {
+                hideProfileForm()
+            } else if (!importForm.classList.contains('hidden')) {
+                hideImportForm()
+            }
+        }
+    })
 })
 
 // Обработка сообщений от background
@@ -219,7 +240,7 @@ function renderProfiles() {
     // Обновляем счетчик профилей
     const profilesCount = document.getElementById('profilesCount')
     if (profilesCount) {
-        profilesCount.textContent = profiles.length > 0 ? `(${profiles.length})` : ''
+        profilesCount.textContent = profiles.length > 0 ? `${profiles.length}` : ''
     }
 
     if (profiles.length === 0) {
@@ -248,17 +269,17 @@ function renderProfiles() {
 
         profileItem.innerHTML = `
         <div class="profile-info">
-          <div class="profile-name">${profile.name}</div>
+          <div class="profile-name">${escapeHtml(profile.name)}</div>
           <div class="profile-details">
             <span class="profile-type">${(profile.type || 'HTTP').toUpperCase()}</span>
-            ${profile.host}:${profile.port}
-            ${profile.username ? '<span class="auth-badge">🔐</span>' : ''}
+            <span>${escapeHtml(profile.host)}:${profile.port}</span>
+            ${profile.username ? '<span class="auth-badge">🔐 Auth</span>' : ''}
           </div>
         </div>
         <div class="profile-actions">
           <button class="btn btn-small btn-secondary copy-btn" data-id="${profile.id}" title="Копировать">📋</button>
-          <button class="btn btn-small btn-primary edit-btn" data-id="${profile.id}">✏️</button>
-          <button class="btn btn-small btn-danger delete-btn" data-id="${profile.id}">🗑️</button>
+          <button class="btn btn-small btn-primary edit-btn" data-id="${profile.id}" title="Редактировать">✏️</button>
+          <button class="btn btn-small btn-danger delete-btn" data-id="${profile.id}" title="Удалить">🗑️</button>
         </div>
       `
 
@@ -292,6 +313,13 @@ function renderProfiles() {
     })
 }
 
+// Функция для безопасного экранирования HTML
+function escapeHtml(text) {
+    const div = document.createElement('div')
+    div.textContent = text
+    return div.innerHTML
+}
+
 // Активация профиля
 function activateProfile(profileId) {
     const profile = profiles.find((p) => p.id === profileId)
@@ -300,8 +328,7 @@ function activateProfile(profileId) {
     // Показываем индикатор загрузки
     const profileItem = document.querySelector(`[data-id="${profileId}"]`)
     if (profileItem) {
-        profileItem.style.opacity = '0.6'
-        profileItem.style.pointerEvents = 'none'
+        profileItem.classList.add('loading')
     }
 
     chrome.runtime.sendMessage(
@@ -310,6 +337,11 @@ function activateProfile(profileId) {
             profile: profile,
         },
         (response) => {
+            // Убираем индикатор загрузки
+            if (profileItem) {
+                profileItem.classList.remove('loading')
+            }
+
             if (response && response.success) {
                 activeProfileId = profileId
                 saveProfiles()
@@ -317,12 +349,6 @@ function activateProfile(profileId) {
                 updateStatus()
                 updateDisableButton()
             } else {
-                // В случае ошибки восстанавливаем элемент
-                if (profileItem) {
-                    profileItem.style.opacity = '1'
-                    profileItem.style.pointerEvents = 'auto'
-                }
-
                 // Проверяем последнюю ошибку
                 if (chrome.runtime.lastError) {
                     showConfirmDialog(`Не удалось активировать прокси:\n${chrome.runtime.lastError.message}`, null)
@@ -354,6 +380,11 @@ function showAddProfileForm() {
     document.getElementById('proxyType').value = 'http'
     profileForm.classList.remove('hidden')
     addProfileBtn.style.display = 'none'
+
+    // Фокус на первое поле
+    setTimeout(() => {
+        document.getElementById('profileName').focus()
+    }, 100)
 }
 
 // Скрыть форму
@@ -392,11 +423,11 @@ function copyProfile(profile) {
                 btn.textContent = originalText
                 btn.style.background = ''
                 btn.style.color = ''
-            }, 1000)
+            }, 1500)
         })
         .catch((err) => {
             console.error('Ошибка копирования:', err)
-            alert('Не удалось скопировать в буфер обмена')
+            showConfirmDialog('Не удалось скопировать в буфер обмена', null)
         })
 }
 
@@ -418,11 +449,19 @@ function editProfile(profileId) {
 
     profileForm.classList.remove('hidden')
     addProfileBtn.style.display = 'none'
+
+    // Фокус на первое поле
+    setTimeout(() => {
+        document.getElementById('profileName').focus()
+    }, 100)
 }
 
 // Удаление профиля
 function deleteProfile(profileId) {
-    showConfirmDialog('Удалить этот профиль?', () => {
+    const profile = profiles.find((p) => p.id === profileId)
+    if (!profile) return
+
+    showConfirmDialog(`Удалить профиль "${profile.name}"?`, () => {
         profiles = profiles.filter((p) => p.id !== profileId)
 
         if (activeProfileId === profileId) {
@@ -449,14 +488,14 @@ function handleFormSubmit(e) {
 
     // Валидация данных
     if (!formData.name || !formData.host || !formData.port) {
-        alert('Пожалуйста, заполните обязательные поля')
+        showConfirmDialog('Пожалуйста, заполните обязательные поля (название, IP адрес, порт)', null)
         return
     }
 
     // Проверка порта
     const port = parseInt(formData.port)
     if (isNaN(port) || port < 1 || port > 65535) {
-        alert('Порт должен быть числом от 1 до 65535')
+        showConfirmDialog('Порт должен быть числом от 1 до 65535', null)
         return
     }
 
@@ -465,7 +504,14 @@ function handleFormSubmit(e) {
     const domainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](?:\.[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9])*$/
 
     if (!ipPattern.test(formData.host) && !domainPattern.test(formData.host)) {
-        alert('Введите корректный IP адрес или доменное имя')
+        showConfirmDialog('Введите корректный IP адрес или доменное имя', null)
+        return
+    }
+
+    // Проверка на дубликаты названий (исключая редактируемый профиль)
+    const existingProfile = profiles.find((p) => p.name.toLowerCase() === formData.name.toLowerCase() && p.id !== editingProfileId)
+    if (existingProfile) {
+        showConfirmDialog('Профиль с таким названием уже существует', null)
         return
     }
 
@@ -498,6 +544,11 @@ function handleFormSubmit(e) {
 function showImportForm() {
     importForm.classList.remove('hidden')
     addProfileBtn.style.display = 'none'
+
+    // Фокус на текстовое поле
+    setTimeout(() => {
+        importText.focus()
+    }, 100)
 }
 
 // Скрыть форму импорта
@@ -528,6 +579,21 @@ function parseProxy(line) {
         }
     }
 
+    // Определяем тип прокси из начала строки
+    let proxyType = 'http'
+    const typePatterns = [{ pattern: /^(socks5|socks4|http|https)\s+/i, extract: true }]
+
+    for (const { pattern, extract } of typePatterns) {
+        const match = line.match(pattern)
+        if (match) {
+            proxyType = match[1].toLowerCase()
+            if (extract) {
+                line = line.replace(pattern, '').trim()
+            }
+            break
+        }
+    }
+
     // Паттерны для разных форматов
     const patterns = [
         // user:pass@ip:port
@@ -550,6 +616,7 @@ function parseProxy(line) {
             password: match[2],
             host: match[3],
             port: match[4],
+            type: proxyType,
         }
     }
 
@@ -562,6 +629,7 @@ function parseProxy(line) {
                 port: match[2],
                 username: match[3],
                 password: match[4],
+                type: proxyType,
             }
         }
     }
@@ -575,6 +643,7 @@ function parseProxy(line) {
                 password: match[2],
                 host: match[3],
                 port: match[4],
+                type: proxyType,
             }
         }
     }
@@ -588,6 +657,7 @@ function parseProxy(line) {
                 port: match[2],
                 username: '',
                 password: '',
+                type: proxyType,
             }
         }
     }
@@ -603,22 +673,34 @@ function parseProxy(line) {
 // Обработка импорта
 function processImport() {
     const text = importText.value.trim()
-    if (!text) return
+    if (!text) {
+        showConfirmDialog('Введите данные прокси для импорта', null)
+        return
+    }
 
     const lines = text.split('\n')
     let imported = 0
+    let skipped = 0
     let firstImportedId = null
 
     lines.forEach((line, index) => {
         const proxyData = parseProxy(line)
         if (proxyData) {
+            // Проверяем на дубликаты
+            const existingProfile = profiles.find((p) => p.host === proxyData.host && p.port === proxyData.port && p.username === proxyData.username)
+
+            if (existingProfile) {
+                skipped++
+                return
+            }
+
             const newProfile = {
                 name: proxyData.customName || `Прокси ${profiles.length + imported + 1}`,
                 type: proxyData.type || 'http',
                 host: proxyData.host,
                 port: proxyData.port,
-                username: proxyData.username,
-                password: proxyData.password,
+                username: proxyData.username || '',
+                password: proxyData.password || '',
                 id: Date.now().toString() + index,
             }
             profiles.push(newProfile)
@@ -629,6 +711,8 @@ function processImport() {
             }
 
             imported++
+        } else if (line.trim()) {
+            skipped++
         }
     })
 
@@ -637,13 +721,24 @@ function processImport() {
         renderProfiles()
         hideImportForm()
 
+        let message = `Успешно импортировано профилей: ${imported}`
+        if (skipped > 0) {
+            message += `\nПропущено (дубликаты или неверный формат): ${skipped}`
+        }
+        message += '\n\nАктивировать первый импортированный профиль?'
+
         // Показываем сообщение об успехе
-        showConfirmDialog(`Успешно импортировано профилей: ${imported}\n\nАктивировать первый импортированный профиль?`, () => {
+        showConfirmDialog(message, () => {
             if (firstImportedId) {
                 activateProfile(firstImportedId)
             }
         })
     } else {
-        alert('Не удалось распознать ни одного прокси. Проверьте формат.')
+        let message = 'Не удалось импортировать ни одного профиля.'
+        if (skipped > 0) {
+            message += `\nВсе ${skipped} записей были пропущены (дубликаты или неверный формат).`
+        }
+        message += '\n\nПроверьте формат данных.'
+        showConfirmDialog(message, null)
     }
 }
