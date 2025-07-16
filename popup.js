@@ -24,7 +24,6 @@ let state = {
     activeProfileId: null,
     editingId: null,
     geoCache: {},
-    pingCache: {},
 }
 
 // Инициализация
@@ -35,14 +34,11 @@ async function init() {
     await loadProfiles()
     await updateStatus()
 
-    // Запускаем пинги только при открытии и только при прямом подключении
-    const proxyStatus = await chrome.runtime.sendMessage({ action: 'getStatus' })
-    if (!proxyStatus.isActive) {
-        console.log('⏱️ Ждем стабилизации сетевых настроек...')
-        setTimeout(async () => {
-            await updatePings()
-        }, 500) // Небольшая задержка при инициализации
-    }
+    // Запускаем пинги только при открытии расширения
+    console.log('🏓 Запускаем проверку пингов при открытии...')
+    setTimeout(async () => {
+        await updatePings()
+    }, 300)
 
     bindEvents()
 }
@@ -75,10 +71,9 @@ function bindEvents() {
 
 // Загрузка профилей
 async function loadProfiles() {
-    const result = await chrome.storage.local.get(['profiles', 'geoCache', 'pingCache'])
+    const result = await chrome.storage.local.get(['profiles', 'geoCache'])
     state.profiles = result.profiles || []
     state.geoCache = result.geoCache || {}
-    state.pingCache = result.pingCache || {}
     renderProfiles()
 }
 
@@ -87,7 +82,6 @@ async function saveProfiles() {
     await chrome.storage.local.set({
         profiles: state.profiles,
         geoCache: state.geoCache,
-        pingCache: state.pingCache,
     })
 }
 
@@ -383,10 +377,8 @@ function getCountryName(countryCode) {
     return countries[countryCode] || countryCode
 }
 
-// Прямая проверка пинга (без проверки статуса прокси)
-async function directPingCheck(host, port, retryCount = 0) {
-    const key = `${host}:${port}`
-
+// Проверка пинга прокси (без кэширования)
+async function checkProxyPing(host, port) {
     try {
         const start = performance.now()
         const controller = new AbortController()
@@ -399,56 +391,14 @@ async function directPingCheck(host, port, retryCount = 0) {
                 signal: controller.signal,
             })
             clearTimeout(timeout)
-            const ping = Math.round(performance.now() - start)
-            state.pingCache[key] = { ping, timestamp: Date.now() }
-            await saveProfiles()
-            return ping
+            return Math.round(performance.now() - start)
         } catch (fetchError) {
             clearTimeout(timeout)
-
-            // Если ошибка связана с прокси и это первая попытка, пробуем еще раз
-            if (fetchError.message.includes('PROXY') && retryCount < 2) {
-                console.log(`⚠️ Ошибка прокси для ${host}:${port}, повтор ${retryCount + 1}/2`)
-                await new Promise((resolve) => setTimeout(resolve, 1000)) // Ждем 1 секунду
-                return await directPingCheck(host, port, retryCount + 1)
-            }
-
-            const simulatedPing = simulatePingByLocation(host)
-            state.pingCache[key] = { ping: simulatedPing, timestamp: Date.now() }
-            await saveProfiles()
-            return simulatedPing
+            return simulatePingByLocation(host)
         }
     } catch (error) {
-        const simulatedPing = simulatePingByLocation(host)
-        state.pingCache[key] = { ping: simulatedPing, timestamp: Date.now() }
-        await saveProfiles()
-        return simulatedPing
+        return simulatePingByLocation(host)
     }
-}
-
-// Проверка пинга прокси (с учетом статуса)
-async function checkProxyPing(host, port) {
-    const key = `${host}:${port}`
-
-    // Проверяем, есть ли активный прокси
-    const proxyStatus = await chrome.runtime.sendMessage({ action: 'getStatus' })
-
-    // Если есть активный прокси, используем только кэш или показываем N/A
-    if (proxyStatus.isActive) {
-        if (state.pingCache[key] && Date.now() - state.pingCache[key].timestamp < 300000) {
-            // 5 минут кэш
-            return state.pingCache[key].ping
-        }
-        return null // Показать N/A
-    }
-
-    // Если прямое подключение, проверяем кэш (2 минуты)
-    if (state.pingCache[key] && Date.now() - state.pingCache[key].timestamp < 120000) {
-        return state.pingCache[key].ping
-    }
-
-    // Выполняем прямую проверку
-    return await directPingCheck(host, port)
 }
 
 // Симуляция пинга на основе геолокации
@@ -473,15 +423,10 @@ function formatPing(ping) {
 
 // Обновление статуса
 async function updateStatus() {
-    // Сначала принудительно синхронизируем состояние
     await chrome.runtime.sendMessage({ action: 'syncState' })
-
-    // Затем получаем актуальный статус
     const response = await chrome.runtime.sendMessage({ action: 'getStatus' })
-    const wasActive = state.activeProfileId !== null
 
     if (response.isActive && response.activeProfile) {
-        // Получаем информацию о стране для флага
         const geoInfo = await getCountryInfo(response.activeProfile.host)
 
         elements.status.innerHTML = `Подключен: <img class="country-flag" src="${geoInfo.flagUrl}" alt="${geoInfo.country}" title="${
@@ -499,29 +444,20 @@ async function updateStatus() {
         elements.status.className = 'status'
         elements.toggleBtn.className = 'toggle-btn hidden'
         state.activeProfileId = null
-
-        // Если переключились на прямое подключение, ждем и запускаем пинги
-        if (wasActive) {
-            console.log('⏱️ Ждем очистки настроек прокси...')
-            setTimeout(async () => {
-                await updatePings()
-            }, 1500) // Задержка 1.5 секунды
-        }
     }
 
     renderProfiles()
 }
 
-// Обновление пингов для всех профилей
+// Обновление пингов для всех профилей (только при открытии)
 async function updatePings() {
     if (state.profiles.length === 0) return
 
     console.log('🏓 Обновляем пинги профилей...')
 
-    // Запускаем прямые пинги для всех профилей (мы знаем что прямое подключение)
     const pingPromises = state.profiles.map(async (profile) => {
         try {
-            const ping = await directPingCheck(profile.host, profile.port)
+            const ping = await checkProxyPing(profile.host, profile.port)
             const pingElement = document.querySelector(`[data-host="${profile.host}"][data-port="${profile.port}"]`)
             if (pingElement) {
                 pingElement.textContent = formatPing(ping)
@@ -579,7 +515,7 @@ async function renderProfiles() {
 
     bindProfileEvents()
 
-    // Асинхронно загружаем только геолокацию (без пингов)
+    // Асинхронно загружаем только геолокацию
     state.profiles.forEach(async (profile) => {
         try {
             const geoInfo = await getCountryInfo(profile.host)
@@ -593,24 +529,11 @@ async function renderProfiles() {
         } catch (error) {
             console.log('Ошибка загрузки геолокации для', profile.host, error)
         }
-
-        // Показываем кэшированный пинг если есть
-        const pingKey = `${profile.host}:${profile.port}`
-        if (state.pingCache[pingKey]) {
-            const pingElement = document.querySelector(`[data-host="${profile.host}"][data-port="${profile.port}"]`)
-            if (pingElement) {
-                const cachedPing = state.pingCache[pingKey].ping
-                pingElement.textContent = formatPing(cachedPing)
-                pingElement.className = `ping-info ${getPingClass(cachedPing)}`
-                pingElement.title = `Пинг: ${formatPing(cachedPing)} (кэш)`
-            }
-        }
     })
 }
 
 // Привязка событий к профилям
 function bindProfileEvents() {
-    // Клик по всему профилю для активации
     elements.profilesList.querySelectorAll('.profile-item').forEach((item) => {
         item.addEventListener('click', (e) => {
             const profileId = item.dataset.id
@@ -644,7 +567,7 @@ function bindProfileEvents() {
 async function toggleProxy() {
     if (state.activeProfileId) {
         await chrome.runtime.sendMessage({ action: 'disableProxy' })
-        await updateStatus() // updateStatus уже содержит логику запуска пингов при отключении
+        await updateStatus()
     }
 }
 
