@@ -8,8 +8,24 @@ let proxyState = {
 // Кеш геолокации
 let geoCache = new Map()
 
-// ID правил для declarativeNetRequest (используем уникальные ID)
-const RULE_IDS = [1001, 1002, 1003, 1004, 1005]
+// Генерируем уникальные ID для правил на основе ID расширения
+const EXTENSION_ID = chrome.runtime.id
+const generateRuleId = (index) => {
+    // Используем хеш от ID расширения для генерации уникальных ID
+    let hash = 0
+    for (let i = 0; i < EXTENSION_ID.length; i++) {
+        const char = EXTENSION_ID.charCodeAt(i)
+        hash = (hash << 5) - hash + char
+        hash = hash & hash // Convert to 32bit integer
+    }
+    // Берем только положительные числа и добавляем индекс
+    return Math.abs(hash % 1000000) + index
+}
+
+// Генерируем уникальные ID правил
+const RULE_IDS = Array.from({ length: 5 }, (_, i) => generateRuleId(i + 1))
+
+console.log('🆔 Сгенерированы уникальные ID правил:', RULE_IDS)
 
 // Инициализация расширения
 chrome.runtime.onInstalled.addListener((details) => {
@@ -40,8 +56,8 @@ function setupSidePanel() {
 // Инициализация расширения
 async function initializeExtension() {
     try {
-        // Очищаем старые правила при инициализации
-        await clearProxyAuthRules()
+        // Очищаем ВСЕ динамические правила при старте
+        await clearAllDynamicRules()
 
         // Загружаем сохраненные данные
         const result = await chrome.storage.local.get(['activeProfile', 'activeProfileId', 'geoCache'])
@@ -66,7 +82,7 @@ async function initializeExtension() {
 
             console.log('🔄 Восстановлены учетные данные из сохраненного профиля:', {
                 username: proxyState.authCredentials.username || 'НЕ УКАЗАН',
-                password: proxyState.authCredentials.password ? '***' : 'НЕ УКАЗАН',
+                password: proxyState.authCredentials.password || 'НЕ УКАЗАН',
                 host: result.activeProfile.host,
                 port: result.activeProfile.port,
             })
@@ -85,7 +101,7 @@ async function initializeExtension() {
             updateBadge(proxyState.isActive)
         }
     } catch (error) {
-        console.error('Ошибка инициализации:', error.message || error)
+        console.error('Ошибка инициализации:', error)
         updateBadge(false)
     }
 }
@@ -179,27 +195,64 @@ function updateBadge(isActive) {
     chrome.action.setTitle({ title })
 }
 
-// ИСПРАВЛЕННАЯ функция: Настройка правил авторизации через declarativeNetRequest
+// Очистка ВСЕХ динамических правил
+async function clearAllDynamicRules() {
+    try {
+        console.log('🧹 Очищаем ВСЕ динамические правила...')
+
+        // Получаем все существующие динамические правила
+        const existingRules = await chrome.declarativeNetRequest.getDynamicRules()
+
+        if (existingRules.length > 0) {
+            const allRuleIds = existingRules.map((rule) => rule.id)
+            await chrome.declarativeNetRequest.updateDynamicRules({
+                removeRuleIds: allRuleIds,
+            })
+            console.log('🗑️ Удалено правил:', allRuleIds.length)
+        }
+    } catch (error) {
+        console.error('Ошибка очистки правил:', error)
+    }
+}
+
+// Настройка правил авторизации через declarativeNetRequest
 async function setupProxyAuthRules() {
     try {
-        console.log('🔧 Начинаем настройку правил авторизации...')
+        console.log('🔧 === НАЧАЛО НАСТРОЙКИ ПРАВИЛ АВТОРИЗАЦИИ ===')
 
-        // Сначала ОБЯЗАТЕЛЬНО очищаем все старые правила
+        // Сначала очищаем только наши правила
         await clearProxyAuthRules()
 
         if (!proxyState.authCredentials || !proxyState.authCredentials.username || !proxyState.authCredentials.password) {
             console.log('🔐 Нет учетных данных для настройки авторизации')
-            return
+            return false
         }
 
-        const credentials = btoa(`${proxyState.authCredentials.username}:${proxyState.authCredentials.password}`)
-        console.log('🔑 Создаем Base64 авторизацию:', `Basic ${credentials.substring(0, 10)}...`)
+        // Подробное логирование учетных данных
+        console.log('📋 Учетные данные для авторизации:')
+        console.log('   Логин:', proxyState.authCredentials.username)
+        console.log('   Пароль:', proxyState.authCredentials.password)
+        console.log('   Длина логина:', proxyState.authCredentials.username.length)
+        console.log('   Длина пароля:', proxyState.authCredentials.password.length)
 
-        // Создаем правила для разных типов запросов с ПРАВИЛЬНЫМИ типами ресурсов
+        // Формируем строку для Base64
+        const authString = `${proxyState.authCredentials.username}:${proxyState.authCredentials.password}`
+        console.log('🔗 Строка для кодирования:', authString)
+
+        const credentials = btoa(authString)
+        console.log('🔑 Base64 строка:', credentials)
+        console.log('🔑 Полный заголовок:', `Basic ${credentials}`)
+
+        // Проверяем декодирование для отладки
+        const decoded = atob(credentials)
+        console.log('🔓 Декодированная строка:', decoded)
+        console.log('✅ Проверка: декодирование совпадает?', decoded === authString)
+
+        // Создаем единое правило для всех типов ресурсов
         const rules = [
             {
-                id: RULE_IDS[0], // 1001
-                priority: 100,
+                id: RULE_IDS[0],
+                priority: 1,
                 action: {
                     type: 'modifyHeaders',
                     requestHeaders: [
@@ -211,142 +264,75 @@ async function setupProxyAuthRules() {
                     ],
                 },
                 condition: {
-                    resourceTypes: ['main_frame', 'sub_frame'],
-                },
-            },
-            {
-                id: RULE_IDS[1], // 1002
-                priority: 100,
-                action: {
-                    type: 'modifyHeaders',
-                    requestHeaders: [
-                        {
-                            header: 'Proxy-Authorization',
-                            operation: 'set',
-                            value: `Basic ${credentials}`,
-                        },
+                    resourceTypes: [
+                        'main_frame',
+                        'sub_frame',
+                        'stylesheet',
+                        'script',
+                        'image',
+                        'font',
+                        'object',
+                        'xmlhttprequest',
+                        'ping',
+                        'media',
+                        'websocket',
+                        'other',
                     ],
-                },
-                condition: {
-                    resourceTypes: ['xmlhttprequest'],
-                },
-            },
-            {
-                id: RULE_IDS[2], // 1003
-                priority: 100,
-                action: {
-                    type: 'modifyHeaders',
-                    requestHeaders: [
-                        {
-                            header: 'Proxy-Authorization',
-                            operation: 'set',
-                            value: `Basic ${credentials}`,
-                        },
-                    ],
-                },
-                condition: {
-                    resourceTypes: ['script', 'stylesheet'],
-                },
-            },
-            {
-                id: RULE_IDS[3], // 1004
-                priority: 100,
-                action: {
-                    type: 'modifyHeaders',
-                    requestHeaders: [
-                        {
-                            header: 'Proxy-Authorization',
-                            operation: 'set',
-                            value: `Basic ${credentials}`,
-                        },
-                    ],
-                },
-                condition: {
-                    resourceTypes: ['image', 'media', 'font'],
-                },
-            },
-            {
-                id: RULE_IDS[4], // 1005
-                priority: 100,
-                action: {
-                    type: 'modifyHeaders',
-                    requestHeaders: [
-                        {
-                            header: 'Proxy-Authorization',
-                            operation: 'set',
-                            value: `Basic ${credentials}`,
-                        },
-                    ],
-                },
-                condition: {
-                    resourceTypes: ['other', 'websocket', 'object', 'ping'],
                 },
             },
         ]
 
-        console.log('📝 Добавляем правила с ID:', RULE_IDS)
+        console.log('📝 Добавляем правило:', JSON.stringify(rules[0], null, 2))
 
         // Применяем правила
         await chrome.declarativeNetRequest.updateDynamicRules({
             addRules: rules,
         })
 
-        // Проверяем, что правила действительно добавлены
+        // Проверяем, что правило действительно добавлено
         const activeRules = await chrome.declarativeNetRequest.getDynamicRules()
-        const ourRules = activeRules.filter((rule) => RULE_IDS.includes(rule.id))
+        const ourRule = activeRules.find((rule) => rule.id === RULE_IDS[0])
 
-        console.log('✅ Успешно добавлено правил авторизации:', ourRules.length)
-        console.log('🔐 Заголовки Proxy-Authorization будут добавляться автоматически ко всем запросам')
-
-        if (ourRules.length !== RULE_IDS.length) {
-            throw new Error(`Добавлено только ${ourRules.length} из ${RULE_IDS.length} правил`)
+        if (ourRule) {
+            console.log('✅ Правило авторизации успешно добавлено')
+            console.log('📋 Детали добавленного правила:', JSON.stringify(ourRule, null, 2))
+            console.log('🔐 === НАСТРОЙКА ПРАВИЛ ЗАВЕРШЕНА УСПЕШНО ===')
+            return true
+        } else {
+            throw new Error('Правило не было добавлено')
         }
     } catch (error) {
-        console.error('❌ Ошибка настройки правил авторизации:', error.message || error)
+        console.error('❌ Ошибка настройки правил авторизации:', error)
 
-        // Пытаемся диагностировать проблему
+        // Диагностика
         try {
             const existingRules = await chrome.declarativeNetRequest.getDynamicRules()
+            console.log('🔍 Всего существующих правил:', existingRules.length)
             console.log(
-                '🔍 Существующие правила:',
+                '🔍 ID существующих правил:',
                 existingRules.map((r) => r.id)
             )
         } catch (diagError) {
-            console.error('Ошибка диагностики:', diagError.message || diagError)
+            console.error('Ошибка диагностики:', diagError)
         }
+
+        return false
     }
 }
 
 // Очистка правил авторизации
 async function clearProxyAuthRules() {
     try {
-        console.log('🧹 Очищаем правила авторизации...')
+        console.log('🧹 Очищаем правила авторизации прокси...')
 
-        // Получаем все существующие правила
-        const existingRules = await chrome.declarativeNetRequest.getDynamicRules()
+        // Удаляем только наши правила
+        await chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: RULE_IDS,
+        })
 
-        // Ищем наши правила по ID
-        const ourRuleIds = existingRules.filter((rule) => RULE_IDS.includes(rule.id)).map((rule) => rule.id)
-
-        if (ourRuleIds.length > 0) {
-            await chrome.declarativeNetRequest.updateDynamicRules({
-                removeRuleIds: ourRuleIds,
-            })
-            console.log('🗑️ Удалены правила с ID:', ourRuleIds)
-        } else {
-            console.log('📝 Наших правил не найдено')
-        }
-
-        // Дополнительно очищаем все возможные ID на всякий случай
-        await chrome.declarativeNetRequest
-            .updateDynamicRules({
-                removeRuleIds: RULE_IDS,
-            })
-            .catch(() => {
-                // Игнорируем ошибки, если правила уже не существуют
-            })
+        console.log('🗑️ Правила авторизации очищены')
     } catch (error) {
-        console.error('Ошибка очистки правил авторизации:', error.message || error)
+        console.error('Ошибка очистки правил авторизации:', error)
     }
 }
 
@@ -357,28 +343,32 @@ async function applyProxyProfile(profile) {
             throw new Error('Некорректные данные профиля')
         }
 
-        console.log('🔄 Применяем профиль прокси:', profile.name)
+        console.log('🔄 === ПРИМЕНЕНИЕ ПРОФИЛЯ ПРОКСИ ===')
+        console.log('📋 Профиль:', {
+            name: profile.name,
+            host: profile.host,
+            port: profile.port,
+            type: profile.type || 'http',
+            username: profile.username || 'НЕ УКАЗАН',
+            password: profile.password || 'НЕ УКАЗАН',
+        })
 
-        // Очищаем любые предыдущие настройки прокси и правила авторизации
+        // Очищаем предыдущие настройки
         await chrome.proxy.settings.clear({})
         await clearProxyAuthRules()
 
-        // Небольшая задержка для очистки
-        await new Promise((resolve) => setTimeout(resolve, 200))
+        // Небольшая задержка для корректной очистки
+        await new Promise((resolve) => setTimeout(resolve, 100))
 
-        // ВАЖНО: Устанавливаем учетные данные ДО применения прокси
+        // Устанавливаем учетные данные
         proxyState.authCredentials = {
             username: profile.username || '',
             password: profile.password || '',
         }
 
-        console.log('✅ Установлены учетные данные для прокси:', {
-            username: profile.username || 'НЕ УКАЗАН',
-            password: profile.password ? '***' : 'НЕ УКАЗАН',
-            host: profile.host,
-            port: profile.port,
-            profileName: profile.name,
-        })
+        console.log('💾 Сохранены учетные данные в состоянии:')
+        console.log('   Логин:', proxyState.authCredentials.username || 'ПУСТО')
+        console.log('   Пароль:', proxyState.authCredentials.password || 'ПУСТО')
 
         // Конфигурация прокси
         const proxyConfig = {
@@ -393,7 +383,7 @@ async function applyProxyProfile(profile) {
             },
         }
 
-        console.log('📡 Применяем конфигурацию прокси:', proxyConfig)
+        console.log('📡 Применяем конфигурацию прокси:', JSON.stringify(proxyConfig, null, 2))
 
         // Применяем настройки прокси
         await chrome.proxy.settings.set({
@@ -401,10 +391,15 @@ async function applyProxyProfile(profile) {
             scope: 'regular',
         })
 
-        // КЛЮЧЕВОЙ МОМЕНТ: Настраиваем авторизацию ПОСЛЕ применения прокси
+        // Настраиваем авторизацию если нужно
+        let authSuccess = true
         if (profile.username && profile.password) {
-            console.log('🔐 Настраиваем авторизацию для пользователя:', profile.username)
-            await setupProxyAuthRules()
+            console.log('🔐 Настраиваем авторизацию для профиля с учетными данными')
+            authSuccess = await setupProxyAuthRules()
+
+            if (!authSuccess) {
+                console.warn('⚠️ Не удалось настроить правила авторизации, но прокси будет работать')
+            }
         } else {
             console.log('📝 Прокси без авторизации')
         }
@@ -414,20 +409,21 @@ async function applyProxyProfile(profile) {
         proxyState.isActive = true
         updateBadge(true)
 
-        // Сохраняем активный профиль со всеми данными включая учетные данные
+        // Сохраняем активный профиль
         await chrome.storage.local.set({
             activeProfile: profile,
             activeProfileId: profile.id,
         })
 
-        console.log('✅ Прокси успешно применен:', profile.name)
-        console.log('🔐 Авторизация настроена через declarativeNetRequest')
-
+        console.log('✅ === ПРОКСИ УСПЕШНО ПРИМЕНЕН ===')
         return { success: true }
     } catch (error) {
-        console.error('❌ Ошибка применения прокси:', error.message || error)
-        notifyError(error.message || 'Неизвестная ошибка при применении прокси')
-        return { success: false, error: error.message || 'Неизвестная ошибка' }
+        console.error('❌ Ошибка применения прокси:', error)
+        await disableProxy()
+        return {
+            success: false,
+            error: error.message || 'Неизвестная ошибка',
+        }
     }
 }
 
@@ -449,105 +445,78 @@ async function disableProxy() {
         console.log('🔌 Прокси отключен')
         return { success: true }
     } catch (error) {
-        console.error('❌ Ошибка отключения прокси:', error.message || error)
-        notifyError(error.message || 'Ошибка отключения прокси')
-        return { success: false, error: error.message || 'Ошибка отключения прокси' }
+        console.error('❌ Ошибка отключения прокси:', error)
+        return {
+            success: false,
+            error: error.message || 'Ошибка отключения прокси',
+        }
     }
 }
 
-// Дополнительный перехватчик для fetch API (резервный метод)
-const originalFetch = globalThis.fetch
-globalThis.fetch = async function (input, init = {}) {
-    // Если есть активный прокси с авторизацией, добавляем заголовок (дублирование для надежности)
-    if (proxyState.authCredentials && proxyState.authCredentials.username && proxyState.authCredentials.password) {
-        const headers = new Headers(init.headers || {})
-
-        if (!headers.has('Proxy-Authorization')) {
-            const credentials = btoa(`${proxyState.authCredentials.username}:${proxyState.authCredentials.password}`)
-            headers.set('Proxy-Authorization', `Basic ${credentials}`)
-            init.headers = headers
-            console.log('🔐 [FETCH] Добавлен заголовок Proxy-Authorization')
-        }
-    }
-
-    try {
-        return await originalFetch.call(this, input, init)
-    } catch (error) {
-        // Обработка ошибок авторизации прокси
-        if (error.message && (error.message.includes('ERR_PROXY_AUTH') || error.message.includes('407'))) {
-            console.error('❌ Ошибка авторизации прокси в fetch:', error.message)
-        }
-        throw error
-    }
-}
-
-// Отслеживание ошибок сети для диагностики
+// Обработка ошибок сети
 chrome.webRequest.onErrorOccurred.addListener(
     (details) => {
-        if (
-            proxyState.isActive &&
-            details.error &&
-            (details.error.includes('PROXY') || details.error.includes('ERR_PROXY') || details.error.includes('407'))
-        ) {
-            console.error('🚫 Ошибка прокси:', {
-                url: details.url.substring(0, 100),
-                error: details.error,
-                tabId: details.tabId,
-            })
+        if (proxyState.isActive && details.error) {
+            // Логируем только критичные ошибки прокси
+            if (
+                details.error.includes('ERR_PROXY_AUTH_UNSUPPORTED') ||
+                details.error.includes('ERR_PROXY_CONNECTION_FAILED') ||
+                details.error.includes('ERR_TUNNEL_CONNECTION_FAILED')
+            ) {
+                console.error('🚫 Ошибка прокси:', {
+                    url: details.url.substring(0, 50) + '...',
+                    error: details.error,
+                    type: details.type,
+                })
 
-            // Если это ошибка авторизации - это означает, что наши правила не сработали
-            if (details.error.includes('ERR_PROXY_AUTH') || details.error.includes('407')) {
-                console.error('❌ КРИТИЧНО: Ошибка авторизации прокси! Правила declarativeNetRequest не работают')
-
-                // Пытаемся пересоздать правила
-                setTimeout(() => {
-                    console.log('🔄 Попытка восстановления правил авторизации...')
-                    setupProxyAuthRules()
-                }, 2000)
-
-                chrome.runtime
-                    .sendMessage({
-                        action: 'proxyAuthError',
-                        error: 'Ошибка авторизации прокси. Попытка восстановления...',
-                    })
-                    .catch(() => {})
-            } else {
-                // Другие ошибки прокси
-                chrome.runtime
-                    .sendMessage({
-                        action: 'proxyConnectionError',
-                        error: `Ошибка соединения: ${details.error}`,
-                        fatal: false,
-                    })
-                    .catch(() => {})
+                // Уведомляем пользователя только о критичных ошибках
+                if (details.error.includes('ERR_PROXY_AUTH_UNSUPPORTED')) {
+                    notifyConnectionError('Прокси требует неподдерживаемый тип авторизации')
+                } else if (details.error.includes('ERR_TUNNEL_CONNECTION_FAILED')) {
+                    notifyConnectionError('Не удается подключиться к прокси-серверу')
+                }
             }
         }
     },
     { urls: ['<all_urls>'] }
 )
 
-// БЛОКИРУЕМ onAuthRequired полностью - если он срабатывает, значит наши правила не работают
+// Обработка запросов авторизации (резервный метод)
 chrome.webRequest.onAuthRequired.addListener(
-    (details) => {
-        if (details.isProxy) {
-            console.error('💥 КРИТИЧНО: Появился запрос авторизации! Правила declarativeNetRequest НЕ РАБОТАЮТ!')
-            console.error('🔍 Детали запроса:', {
-                url: details.url.substring(0, 100),
-                challenger: details.challenger,
-                isProxy: details.isProxy,
+    (details, callback) => {
+        console.log('🔑 === ПОЛУЧЕН ЗАПРОС АВТОРИЗАЦИИ ОТ ПРОКСИ ===')
+        console.log('📋 Детали запроса:', {
+            url: details.url.substring(0, 50) + '...',
+            isProxy: details.isProxy,
+            realm: details.realm,
+            scheme: details.scheme,
+            challenger: details.challenger,
+        })
+
+        if (details.isProxy && proxyState.authCredentials && proxyState.authCredentials.username && proxyState.authCredentials.password) {
+            console.log('📤 Отправляем учетные данные:')
+            console.log('   Логин:', proxyState.authCredentials.username)
+            console.log('   Пароль:', proxyState.authCredentials.password)
+
+            callback({
+                authCredentials: {
+                    username: proxyState.authCredentials.username,
+                    password: proxyState.authCredentials.password,
+                },
             })
 
-            // Немедленно уведомляем пользователя
-            notifyError('Правила авторизации не работают. Проверьте поддержку declarativeNetRequest.')
-
-            // Пытаемся восстановить правила
-            setTimeout(() => {
-                console.log('🔄 Экстренная попытка восстановления правил авторизации...')
-                setupProxyAuthRules()
-            }, 1000)
+            console.log('✅ Учетные данные отправлены')
+        } else {
+            console.log('❌ Нет учетных данных для авторизации')
+            console.log('   isProxy:', details.isProxy)
+            console.log('   Есть учетные данные:', !!proxyState.authCredentials)
+            console.log('   Логин:', proxyState.authCredentials?.username || 'НЕТ')
+            console.log('   Пароль:', proxyState.authCredentials?.password || 'НЕТ')
+            callback({})
         }
     },
-    { urls: ['<all_urls>'] }
+    { urls: ['<all_urls>'] },
+    ['asyncBlocking']
 )
 
 // Получение текущего статуса
@@ -564,48 +533,63 @@ async function openSidePanel(windowId) {
         await chrome.sidePanel.open({ windowId })
         return { success: true }
     } catch (error) {
-        console.error('Ошибка открытия боковой панели:', error.message || error)
-        return { success: false, error: error.message || 'Ошибка открытия боковой панели' }
+        console.error('Ошибка открытия боковой панели:', error)
+        return {
+            success: false,
+            error: error.message || 'Ошибка открытия боковой панели',
+        }
     }
 }
 
-// Уведомление об ошибке (ИСПРАВЛЕНО: правильный вывод ошибок)
-function notifyError(errorMessage) {
-    const message = typeof errorMessage === 'string' ? errorMessage : errorMessage?.message || 'Неизвестная ошибка'
+// Уведомление об ошибке подключения
+function notifyConnectionError(errorMessage) {
+    chrome.runtime
+        .sendMessage({
+            action: 'proxyConnectionError',
+            error: errorMessage,
+            fatal: false,
+        })
+        .catch(() => {
+            // Игнорируем, если нет получателей
+        })
+}
 
+// Уведомление об ошибке
+function notifyError(errorMessage) {
     chrome.runtime
         .sendMessage({
             action: 'proxyError',
-            error: message,
+            error: errorMessage,
         })
         .catch(() => {
-            // Игнорируем ошибку, если нет получателей
+            // Игнорируем, если нет получателей
         })
-}
-
-// Функция для принудительного пересоздания правил авторизации
-function resetAuthAttempts() {
-    console.log('🔄 Пересоздание правил авторизации')
-
-    // Пересоздаем правила авторизации
-    if (proxyState.currentProxy && proxyState.authCredentials) {
-        setupProxyAuthRules()
-    }
 }
 
 // Обработка сообщений от popup/sidepanel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.action) {
         case 'applyProxy':
+            console.log('📨 Получен запрос на применение прокси:', request.profile)
             applyProxyProfile(request.profile)
                 .then((result) => sendResponse(result))
-                .catch((error) => sendResponse({ success: false, error: error.message || 'Ошибка применения прокси' }))
+                .catch((error) =>
+                    sendResponse({
+                        success: false,
+                        error: error.message || 'Ошибка применения прокси',
+                    })
+                )
             return true
 
         case 'disableProxy':
             disableProxy()
                 .then((result) => sendResponse(result))
-                .catch((error) => sendResponse({ success: false, error: error.message || 'Ошибка отключения прокси' }))
+                .catch((error) =>
+                    sendResponse({
+                        success: false,
+                        error: error.message || 'Ошибка отключения прокси',
+                    })
+                )
             return true
 
         case 'getStatus':
@@ -615,61 +599,81 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'getGeoLocation':
             getGeoLocation(request.ip)
                 .then((result) => sendResponse({ success: true, data: result }))
-                .catch((error) => sendResponse({ success: false, error: error.message || 'Ошибка геолокации' }))
+                .catch((error) =>
+                    sendResponse({
+                        success: false,
+                        error: error.message || 'Ошибка геолокации',
+                    })
+                )
             return true
 
         case 'openSidePanel':
             openSidePanel(request.windowId)
                 .then((result) => sendResponse(result))
-                .catch((error) => sendResponse({ success: false, error: error.message || 'Ошибка открытия панели' }))
+                .catch((error) =>
+                    sendResponse({
+                        success: false,
+                        error: error.message || 'Ошибка открытия панели',
+                    })
+                )
             return true
 
         case 'resetAuth':
-            resetAuthAttempts()
-            sendResponse({ success: true, message: 'Правила авторизации пересозданы' })
-            break
+            if (proxyState.currentProxy && proxyState.authCredentials) {
+                setupProxyAuthRules()
+                    .then(() =>
+                        sendResponse({
+                            success: true,
+                            message: 'Правила авторизации пересозданы',
+                        })
+                    )
+                    .catch(() =>
+                        sendResponse({
+                            success: false,
+                            error: 'Ошибка пересоздания правил',
+                        })
+                    )
+            } else {
+                sendResponse({
+                    success: false,
+                    error: 'Нет активного прокси',
+                })
+            }
+            return true
 
         case 'debugAuth':
-            // Получаем информацию о текущих правилах
             chrome.declarativeNetRequest
                 .getDynamicRules()
                 .then((rules) => {
                     const ourRules = rules.filter((rule) => RULE_IDS.includes(rule.id))
 
+                    const debugInfo = {
+                        isActive: proxyState.isActive,
+                        currentProfile: proxyState.currentProxy,
+                        authCredentials: {
+                            username: proxyState.authCredentials?.username || 'НЕТ',
+                            password: proxyState.authCredentials?.password || 'НЕТ',
+                        },
+                        declarativeRulesCount: ourRules.length,
+                        totalRulesCount: rules.length,
+                        ruleIds: RULE_IDS,
+                        ourRules: ourRules,
+                    }
+
                     console.log('🔍 === ОТЛАДОЧНАЯ ИНФОРМАЦИЯ ===')
-                    console.log('🔀 Активен ли прокси:', proxyState.isActive)
-                    console.log('📋 Текущий профиль:', proxyState.currentProxy)
-                    console.log('🔐 Учетные данные:', {
-                        username: proxyState.authCredentials?.username || 'НЕ ЗАДАН',
-                        password: proxyState.authCredentials?.password ? 'ЗАДАН' : 'НЕ ЗАДАН',
-                        fullObject: proxyState.authCredentials,
-                    })
-                    console.log('📜 Правила declarativeNetRequest (наши):', ourRules.length)
-                    console.log('📜 Все правила declarativeNetRequest:', rules.length)
-                    console.log('🔧 Детали наших правил:', ourRules)
-                    console.log('🆔 Используемые ID:', RULE_IDS)
-                    console.log('================================')
+                    console.log(JSON.stringify(debugInfo, null, 2))
 
                     sendResponse({
                         success: true,
-                        debug: {
-                            isActive: proxyState.isActive,
-                            currentProfile: proxyState.currentProxy,
-                            authCredentials: proxyState.authCredentials,
-                            declarativeRulesCount: ourRules.length,
-                            totalRulesCount: rules.length,
-                            ruleIds: RULE_IDS,
-                            manifestVersion: 3,
-                            authMethod: 'declarativeNetRequest (превентивный)',
-                        },
+                        debug: debugInfo,
                     })
                 })
-                .catch((error) => {
+                .catch((error) =>
                     sendResponse({
                         success: false,
                         error: error.message || 'Ошибка получения правил',
                     })
-                })
+                )
             return true
 
         default:
@@ -677,54 +681,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 })
 
-// Обработка ошибок прокси (ИСПРАВЛЕНО: правильный вывод ошибок)
+// Обработка ошибок прокси
 chrome.proxy.onProxyError.addListener((details) => {
-    console.error('💥 Ошибка прокси:', {
-        error: details.error,
-        details: details.details,
-        fatal: details.fatal,
-    })
+    console.error('💥 Критическая ошибка прокси:', details)
 
-    if (details.fatal) {
-        const errorMessage = details.error || 'Критическая ошибка прокси-сервера'
-        notifyError(errorMessage)
-
-        chrome.runtime
-            .sendMessage({
-                action: 'proxyConnectionError',
-                error: errorMessage,
-                fatal: details.fatal,
-            })
-            .catch(() => {})
-    }
+    const errorMessage = details.error || 'Критическая ошибка прокси-сервера'
+    notifyError(errorMessage)
 })
 
-// Отслеживание изменений настроек прокси
-chrome.proxy.settings.onChange.addListener((details) => {
-    console.log('⚙️ Изменились настройки прокси:', details)
-
-    const isProxyActive = details.value && details.value.mode !== 'direct' && details.value.mode !== 'system'
-
-    // Если прокси был отключен извне, обновляем состояние
-    if (!isProxyActive && proxyState.currentProxy) {
-        console.log('🔌 Прокси отключен извне')
-        proxyState.currentProxy = null
-        proxyState.authCredentials = null
-        proxyState.isActive = false
-        clearProxyAuthRules()
-        updateBadge(false)
-
-        chrome.storage.local.remove(['activeProfile', 'activeProfileId']).catch((err) => console.error('Ошибка очистки данных:', err.message || err))
-    } else if (isProxyActive && !proxyState.currentProxy) {
-        // Прокси включен извне
-        console.log('🔗 Прокси включен извне')
-        proxyState.isActive = true
-        updateBadge(true)
-    }
-})
-
-console.log('🚀 Chrome Proxy Manager инициализирован для Manifest V3')
-console.log('🔐 Используется declarativeNetRequest для ПРЕВЕНТИВНОЙ авторизации')
-console.log('🆔 Используются уникальные ID правил:', RULE_IDS)
-console.log('✨ Заголовки Proxy-Authorization добавляются ДО отправки запросов')
-console.log('🚫 Диалоги авторизации должны полностью исчезнуть!')
+console.log('🚀 Chrome Proxy Manager инициализирован')
+console.log('🔐 Используется гибридный подход: declarativeNetRequest + onAuthRequired')
+console.log('🆔 ID расширения:', EXTENSION_ID)
+console.log('📝 Включен режим подробного логирования для отладки')

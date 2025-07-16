@@ -84,9 +84,9 @@ function addDebugButton() {
             <path d="m21 12-6 0m-6 0-6 0"/>
         </svg>
     `
-    
+
     debugBtn.addEventListener('click', showDebugInfo)
-    
+
     // Добавляем кнопку в header
     const headerRight = document.querySelector('.header-right')
     headerRight.insertBefore(debugBtn, headerRight.firstChild)
@@ -99,43 +99,49 @@ function showDebugInfo() {
             const debug = response.debug
             let message = `🔍 ОТЛАДОЧНАЯ ИНФОРМАЦИЯ\n\n`
             message += `📡 Прокси активен: ${debug.isActive ? 'ДА' : 'НЕТ'}\n`
-            
+
             if (debug.currentProfile) {
                 message += `📋 Текущий профиль: ${debug.currentProfile.name}\n`
                 message += `🌐 Хост: ${debug.currentProfile.host}:${debug.currentProfile.port}\n`
                 message += `🔗 Тип: ${debug.currentProfile.type || 'http'}\n`
                 message += `👤 Логин в профиле: ${debug.currentProfile.username || 'НЕ ЗАДАН'}\n`
-                message += `🔐 Пароль в профиле: ${debug.currentProfile.password ? 'ЗАДАН' : 'НЕ ЗАДАН'}\n`
+                message += `🔐 Пароль в профиле: ${debug.currentProfile.password || 'НЕ ЗАДАН'}\n`
             } else {
                 message += `📋 Текущий профиль: НЕТ\n`
             }
-            
+
             if (debug.authCredentials) {
                 message += `\n🔑 АКТИВНЫЕ УЧЕТНЫЕ ДАННЫЕ:\n`
                 message += `👤 Логин: ${debug.authCredentials.username || 'НЕ ЗАДАН'}\n`
-                message += `🔐 Пароль: ${debug.authCredentials.password ? 'ЗАДАН (' + debug.authCredentials.password.length + ' символов)' : 'НЕ ЗАДАН'}\n`
+                message += `🔐 Пароль: ${
+                    debug.authCredentials.password ? 'ЗАДАН (' + debug.authCredentials.password.length + ' символов)' : 'НЕ ЗАДАН'
+                }\n`
             } else {
                 message += `\n🔑 АКТИВНЫЕ УЧЕТНЫЕ ДАННЫЕ: НЕ ЗАДАНЫ\n`
             }
-            
+
             if (debug.authAttempts && Object.keys(debug.authAttempts).length > 0) {
                 message += `\n🔢 ПОПЫТКИ АВТОРИЗАЦИИ:\n`
                 for (const [proxy, attempts] of Object.entries(debug.authAttempts)) {
                     message += `${proxy}: ${attempts} попыток\n`
                 }
             }
-            
+
             message += `\n🆘 ЕСЛИ АВТОРИЗАЦИЯ НЕ РАБОТАЕТ:\n`
             message += `1. Нажмите кнопку "Сбросить авторизацию" ниже\n`
             message += `2. Проверьте правильность логина и пароля\n`
             message += `3. Перезагрузите расширение (chrome://extensions/)\n`
             message += `4. Попробуйте отключить и снова включить прокси\n\n`
             message += `💡 Попробуйте открыть httpbin.org/ip для проверки`
-            
-            showConfirmDialog(message, () => {
-                // Сбрасываем счетчик попыток авторизации
-                resetAuthAttempts()
-            }, 'Сбросить авторизацию')
+
+            showConfirmDialog(
+                message,
+                () => {
+                    // Сбрасываем счетчик попыток авторизации
+                    resetAuthAttempts()
+                },
+                'Сбросить авторизацию'
+            )
         } else {
             showConfirmDialog('❌ Ошибка получения отладочной информации')
         }
@@ -178,7 +184,7 @@ async function getGeoLocation(ip) {
                     country: 'Неизвестно',
                     countryCode: null,
                     city: null,
-                    timezone: null
+                    timezone: null,
                 })
                 return
             }
@@ -192,7 +198,7 @@ async function getGeoLocation(ip) {
                     country: 'Неизвестно',
                     countryCode: null,
                     city: null,
-                    timezone: null
+                    timezone: null,
                 })
             }
         })
@@ -410,14 +416,14 @@ function createProfileElement(profile) {
 // Загрузка геолокации для элемента
 async function loadGeolocationForElement(element, ip) {
     const geoInfoElement = element.querySelector('.geo-info')
-    
+
     try {
         const geoData = await getGeoLocation(ip)
-        
+
         if (geoData.countryCode) {
             const flagUrl = getFlagUrl(geoData.countryCode)
             const countryInfo = geoData.city ? `${geoData.city}, ${geoData.country}` : geoData.country
-            
+
             geoInfoElement.innerHTML = `
                 <img src="${flagUrl}" 
                      alt="${geoData.country}" 
@@ -458,7 +464,7 @@ function activateProfile(profileId) {
         port: profile.port,
         hasAuth: !!(profile.username && profile.password),
         username: profile.username || 'НЕТ',
-        password: profile.password ? '***' : 'НЕТ'
+        password: profile.password ? '***' : 'НЕТ',
     })
 
     // Проверяем, есть ли авторизация
@@ -479,7 +485,7 @@ function activateProfile(profileId) {
             state.activeProfileId = profileId
             saveProfiles()
             updateStatus()
-            
+
             // Показываем информацию о работе с авторизацией
             if (hasAuth) {
                 showToast('Прокси подключен. Авторизация настроена автоматически')
@@ -515,13 +521,13 @@ function handleQuickToggle() {
         // Активируем последний использованный или первый профиль
         const lastProfileId = localStorage.getItem('lastActiveProfile')
         const profileToActivate = lastProfileId && state.profiles.find((p) => p.id === lastProfileId) ? lastProfileId : state.profiles[0].id
-        
+
         const profile = state.profiles.find((p) => p.id === profileToActivate)
         console.log('⚡ Быстрое переключение на профиль:', {
             name: profile?.name,
-            hasAuth: !!(profile?.username && profile?.password)
+            hasAuth: !!(profile?.username && profile?.password),
         })
-        
+
         activateProfile(profileToActivate)
     } else {
         console.log('➕ Нет профилей, открываем форму создания')
@@ -705,18 +711,18 @@ function hideImportForm() {
 
 // Генерация уникального имени профиля для импорта
 function generateUniqueImportName(baseName, counter) {
-    const existingNames = state.profiles.map(p => p.name.toLowerCase())
+    const existingNames = state.profiles.map((p) => p.name.toLowerCase())
     let name = baseName
-    
+
     if (counter > 1) {
         name = `${baseName} ${counter}`
     }
-    
+
     // Если имя уже существует, увеличиваем счетчик
     if (existingNames.includes(name.toLowerCase())) {
         return generateUniqueImportName(baseName, counter + 1)
     }
-    
+
     return name
 }
 
@@ -752,7 +758,7 @@ function parseProxyLine(line) {
     if (authFormat1) {
         result = {
             username: authFormat1[1],
-            password: authFormat1[2], 
+            password: authFormat1[2],
             host: authFormat1[3],
             port: authFormat1[4],
             type: proxyType,
@@ -876,14 +882,14 @@ async function processImport() {
         })
     } else {
         let errorMessage = 'Не удалось импортировать ни одного профиля. Проверьте формат данных.'
-        
+
         if (errors.length > 0) {
             errorMessage += '\n\nНераспознанные строки:\n' + errors.slice(0, 5).join('\n')
             if (errors.length > 5) {
                 errorMessage += `\n... и ещё ${errors.length - 5} строк`
             }
         }
-        
+
         showConfirmDialog(errorMessage)
     }
 }
@@ -986,7 +992,7 @@ function resetConfirmModal() {
 function showToast(message, type = 'success') {
     const toast = document.createElement('div')
     const backgroundColor = type === 'error' ? '#ef4444' : 'var(--success)'
-    
+
     toast.style.cssText = `
         position: fixed;
         top: 20px;
@@ -1007,7 +1013,7 @@ function showToast(message, type = 'success') {
     document.body.appendChild(toast)
 
     const duration = type === 'error' ? 4000 : 2500
-    
+
     setTimeout(() => {
         toast.style.animation = 'slideUp 0.3s ease-out forwards'
         setTimeout(() => {
