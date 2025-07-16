@@ -1,19 +1,10 @@
 {
     "manifest_version": 3,
     "name": "Chrome Proxy Manager",
-    "version": "1.2.2",
+    "version": "1.2.5",
     "description": "Профессиональное управление прокси-соединениями с отображением геолокации",
-    "permissions": [
-        "proxy", 
-        "storage", 
-        "sidePanel",
-        "webRequest",
-        "webRequestBlocking"
-    ],
-    "host_permissions": [
-        "<all_urls>", 
-        "http://ip-api.com/*"
-    ],
+    "permissions": ["proxy", "storage", "sidePanel", "webRequest", "declarativeNetRequest"],
+    "host_permissions": ["<all_urls>"],
     "background": {
         "service_worker": "background.js"
     },
@@ -32,5 +23,8 @@
         "16": "icon16.png",
         "48": "icon48.png",
         "128": "icon128.png"
+    },
+    "declarative_net_request": {
+        "rule_resources": []
     }
 }
