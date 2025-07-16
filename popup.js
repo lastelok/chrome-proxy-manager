@@ -1,310 +1,514 @@
 // Элементы DOM
-const statusIndicator = document.getElementById('statusIndicator')
-const profilesList = document.getElementById('profilesList')
-const addProfileBtn = document.getElementById('addProfileBtn')
-const profileForm = document.getElementById('profileForm')
-const proxyForm = document.getElementById('proxyForm')
-const cancelBtn = document.getElementById('cancelBtn')
-const disableProxyBtn = document.getElementById('disableProxyBtn')
-const quickDisableBtn = document.getElementById('quickDisableBtn')
-const directConnectionBtn = document.getElementById('directConnectionBtn')
-const formTitle = document.getElementById('formTitle')
-const importBtn = document.getElementById('importBtn')
-const exportBtn = document.getElementById('exportBtn')
-const importForm = document.getElementById('importForm')
-const importText = document.getElementById('importText')
-const processImportBtn = document.getElementById('processImportBtn')
-const cancelImportBtn = document.getElementById('cancelImportBtn')
-const confirmModal = document.getElementById('confirmModal')
-const confirmMessage = document.getElementById('confirmMessage')
-const confirmYes = document.getElementById('confirmYes')
-const confirmNo = document.getElementById('confirmNo')
-const openSidePanelBtn = document.getElementById('openSidePanelBtn')
+const elements = {
+    // Статус
+    statusIndicator: document.getElementById('statusIndicator'),
+    quickToggleBtn: document.getElementById('quickToggleBtn'),
 
-// Состояние
-let profiles = []
-let activeProfileId = null
-let editingProfileId = null
-let confirmCallback = null
+    // Профили
+    profilesList: document.getElementById('profilesList'),
+    profilesCount: document.getElementById('profilesCount'),
+    addProfileBtn: document.getElementById('addProfileBtn'),
+
+    // Кнопки действий
+    importBtn: document.getElementById('importBtn'),
+    exportBtn: document.getElementById('exportBtn'),
+    openSidePanelBtn: document.getElementById('openSidePanelBtn'),
+
+    // Форма профиля
+    profileForm: document.getElementById('profileForm'),
+    proxyForm: document.getElementById('proxyForm'),
+    formTitle: document.getElementById('formTitle'),
+    closeFormBtn: document.getElementById('closeFormBtn'),
+    cancelBtn: document.getElementById('cancelBtn'),
+
+    // Поля формы
+    profileId: document.getElementById('profileId'),
+    profileName: document.getElementById('profileName'),
+    proxyType: document.getElementById('proxyType'),
+    proxyHost: document.getElementById('proxyHost'),
+    proxyPort: document.getElementById('proxyPort'),
+    useAuth: document.getElementById('useAuth'),
+    authFields: document.getElementById('authFields'),
+    proxyUsername: document.getElementById('proxyUsername'),
+    proxyPassword: document.getElementById('proxyPassword'),
+
+    // Импорт
+    importForm: document.getElementById('importForm'),
+    closeImportBtn: document.getElementById('closeImportBtn'),
+    cancelImportBtn: document.getElementById('cancelImportBtn'),
+    processImportBtn: document.getElementById('processImportBtn'),
+    importText: document.getElementById('importText'),
+
+    // Модальное окно подтверждения
+    confirmModal: document.getElementById('confirmModal'),
+    confirmMessage: document.getElementById('confirmMessage'),
+    confirmYes: document.getElementById('confirmYes'),
+    confirmNo: document.getElementById('confirmNo'),
+}
+
+// Состояние приложения
+let state = {
+    profiles: [],
+    activeProfileId: null,
+    editingProfileId: null,
+    confirmCallback: null,
+    geoCache: {}, // Кэш для геолокации IP адресов
+}
 
 // Инициализация
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', init)
+
+function init() {
     loadProfiles()
     updateStatus()
+    bindEvents()
+}
 
-    // Обработчики событий
-    addProfileBtn.addEventListener('click', showAddProfileForm)
-    cancelBtn.addEventListener('click', hideProfileForm)
-    proxyForm.addEventListener('submit', handleFormSubmit)
-    disableProxyBtn.addEventListener('click', handleDisableProxy)
-    quickDisableBtn.addEventListener('click', handleDisableProxy)
-    directConnectionBtn.addEventListener('click', handleDisableProxy)
-    importBtn.addEventListener('click', showImportForm)
-    exportBtn.addEventListener('click', exportProfiles)
-    processImportBtn.addEventListener('click', processImport)
-    cancelImportBtn.addEventListener('click', hideImportForm)
-    confirmYes.addEventListener('click', handleConfirmYes)
-    confirmNo.addEventListener('click', handleConfirmNo)
-    openSidePanelBtn.addEventListener('click', openInSidePanel)
+// Привязка событий
+function bindEvents() {
+    // Основные действия
+    elements.addProfileBtn.addEventListener('click', showAddProfileForm)
+    elements.quickToggleBtn.addEventListener('click', handleQuickToggle)
+    elements.importBtn.addEventListener('click', showImportForm)
+    elements.exportBtn.addEventListener('click', exportProfiles)
+    elements.openSidePanelBtn.addEventListener('click', openInSidePanel)
 
-    // Закрытие модальных/форм по клику вне
-    confirmModal.addEventListener('click', (e) => {
-        if (e.target === confirmModal) handleConfirmNo()
+    // Форма профиля
+    elements.proxyForm.addEventListener('submit', handleFormSubmit)
+    elements.closeFormBtn.addEventListener('click', hideProfileForm)
+    elements.cancelBtn.addEventListener('click', hideProfileForm)
+    elements.useAuth.addEventListener('change', toggleAuthFields)
+
+    // Импорт
+    elements.closeImportBtn.addEventListener('click', hideImportForm)
+    elements.cancelImportBtn.addEventListener('click', hideImportForm)
+    elements.processImportBtn.addEventListener('click', processImport)
+
+    // Подтверждение
+    elements.confirmYes.addEventListener('click', handleConfirmYes)
+    elements.confirmNo.addEventListener('click', handleConfirmNo)
+
+    // Закрытие модальных окон
+    elements.profileForm.addEventListener('click', (e) => {
+        if (e.target === elements.profileForm) hideProfileForm()
     })
-    // По Esc
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            if (!confirmModal.classList.contains('hidden')) {
-                handleConfirmNo()
-            } else if (!profileForm.classList.contains('hidden')) {
-                hideProfileForm()
-            } else if (!importForm.classList.contains('hidden')) {
-                hideImportForm()
-            }
+
+    elements.importForm.addEventListener('click', (e) => {
+        if (e.target === elements.importForm) hideImportForm()
+    })
+
+    elements.confirmModal.addEventListener('click', (e) => {
+        if (e.target === elements.confirmModal) handleConfirmNo()
+    })
+
+    // Клавиатурные сокращения
+    document.addEventListener('keydown', handleKeyDown)
+}
+
+// Обработка клавиш
+function handleKeyDown(e) {
+    if (e.key === 'Escape') {
+        if (!elements.confirmModal.classList.contains('hidden')) {
+            handleConfirmNo()
+        } else if (!elements.profileForm.classList.contains('hidden')) {
+            hideProfileForm()
+        } else if (!elements.importForm.classList.contains('hidden')) {
+            hideImportForm()
         }
-    })
-})
+    }
+}
 
 // Загрузка профилей
 function loadProfiles() {
-    chrome.storage.local.get(['profiles', 'activeProfileId'], (res) => {
-        profiles = res.profiles || []
-        activeProfileId = res.activeProfileId || null
+    chrome.storage.local.get(['profiles', 'activeProfileId', 'geoCache'], (result) => {
+        state.profiles = result.profiles || []
+        state.activeProfileId = result.activeProfileId || null
+        state.geoCache = result.geoCache || {}
         renderProfiles()
-        updateDisableButton()
     })
 }
 
-// Сохранение
+// Сохранение профилей
 function saveProfiles() {
-    chrome.storage.local.set({ profiles, activeProfileId })
+    chrome.storage.local.set({
+        profiles: state.profiles,
+        activeProfileId: state.activeProfileId,
+        geoCache: state.geoCache,
+    })
 }
 
-// Обновить индикатор
+// Обновление статуса
 function updateStatus() {
     chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
-        const statusText = statusIndicator.querySelector('.status-text')
-        if (response && response.isActive && response.currentProfile) {
-            statusIndicator.classList.add('active')
-            statusText.textContent = `Подключено: ${response.currentProfile.name}`
-            activeProfileId = response.currentProfile.id
-            quickDisableBtn.classList.remove('hidden')
-            directConnectionBtn.classList.add('hidden')
-        } else {
-            statusIndicator.classList.remove('active')
-            statusText.textContent = 'Прямое подключение'
-            activeProfileId = null
-            quickDisableBtn.classList.add('hidden')
-            directConnectionBtn.classList.remove('hidden')
+        if (chrome.runtime.lastError) {
+            console.error('Ошибка получения статуса:', chrome.runtime.lastError)
+            return
         }
-        updateDisableButton()
+
+        const statusTitle = elements.statusIndicator.querySelector('.status-title')
+        const statusSubtitle = elements.statusIndicator.querySelector('.status-subtitle')
+
+        if (response?.isActive && response?.currentProfile) {
+            elements.statusIndicator.classList.add('active')
+            elements.quickToggleBtn.classList.add('active')
+            statusTitle.textContent = `Подключено: ${response.currentProfile.name}`
+            statusSubtitle.textContent = `${response.currentProfile.host}:${response.currentProfile.port}`
+            state.activeProfileId = response.currentProfile.id
+
+            // Сохраняем последний активный профиль для быстрого доступа
+            localStorage.setItem('lastActiveProfile', response.currentProfile.id)
+        } else {
+            elements.statusIndicator.classList.remove('active')
+            elements.quickToggleBtn.classList.remove('active')
+            statusTitle.textContent = 'Прямое подключение'
+            statusSubtitle.textContent = 'Прокси отключен'
+            state.activeProfileId = null
+        }
+
         renderProfiles()
     })
 }
 
-// Показать/скрыть кнопку отключения
-function updateDisableButton() {
-    document.querySelector('.bottom-section').style.display = activeProfileId ? 'block' : 'none'
-}
-
-// Отрисовать список профилей
+// Отрисовка профилей
 function renderProfiles() {
-    profilesList.innerHTML = ''
-    const count = document.getElementById('profilesCount')
-    count.textContent = profiles.length ? `${profiles.length}` : ''
-    if (!profiles.length) {
-        profilesList.innerHTML = '<div class="empty-message">Нет сохраненных профилей</div>'
-        document.querySelector('.profiles-hint').style.display = 'none'
+    const count = state.profiles.length
+    elements.profilesCount.textContent = count
+    elements.profilesList.innerHTML = ''
+
+    if (count === 0) {
+        elements.profilesList.innerHTML = `
+            <div class="empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                    <path d="M2 12h20"/>
+                </svg>
+                <div>Нет сохраненных профилей</div>
+                <div style="font-size: 12px; margin-top: 4px;">Создайте первый профиль для начала работы</div>
+            </div>
+        `
         return
     }
-    document.querySelector('.profiles-hint').style.display = 'block'
-    profiles
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .forEach((p) => {
-            const item = document.createElement('div')
-            item.className = 'profile-item'
-            item.dataset.id = p.id
-            if (p.id === activeProfileId) item.classList.add('active')
-            item.innerHTML = `
-                <div class="profile-info">
-                    <div class="profile-name">${escapeHtml(p.name)}</div>
-                    <div class="profile-details">
-                        <span class="profile-type">${(p.type || 'http').toUpperCase()}</span>
-                        <span>${escapeHtml(p.host)}:${p.port}</span>
-                        ${p.username ? '<span class="auth-badge">🔐</span>' : ''}
-                    </div>
-                </div>
-                <div class="profile-actions">
-                    <button class="btn btn-small btn-secondary copy-btn" title="Копировать">📋</button>
-                    <button class="btn btn-small btn-primary edit-btn" title="Редактировать">✏️</button>
-                    <button class="btn btn-small btn-danger delete-btn" title="Удалить">🗑️</button>
-                </div>`
-            // События
-            item.addEventListener('click', (e) => {
-                if (!e.target.closest('.profile-actions')) activateProfile(p.id)
-            })
-            item.querySelector('.copy-btn').addEventListener('click', (e) => {
-                e.stopPropagation()
-                copyProfile(p)
-            })
-            item.querySelector('.edit-btn').addEventListener('click', (e) => {
-                e.stopPropagation()
-                editProfile(p.id)
-            })
-            item.querySelector('.delete-btn').addEventListener('click', (e) => {
-                e.stopPropagation()
-                deleteProfile(p.id)
-            })
-            profilesList.appendChild(item)
+
+    const sortedProfiles = [...state.profiles].sort((a, b) => a.name.localeCompare(b.name))
+
+    sortedProfiles.forEach((profile) => {
+        const profileElement = createProfileElement(profile)
+        elements.profilesList.appendChild(profileElement)
+    })
+}
+
+// Создание элемента профиля
+function createProfileElement(profile) {
+    const isActive = profile.id === state.activeProfileId
+
+    const element = document.createElement('div')
+    element.className = `profile-card ${isActive ? 'active' : ''}`
+    element.dataset.id = profile.id
+
+    element.innerHTML = `
+        <div class="profile-header">
+            <div class="profile-name">${escapeHtml(profile.name)}</div>
+            <div class="profile-actions">
+                <button class="profile-action-btn copy-btn" title="Копировать">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                </button>
+                <button class="profile-action-btn edit-btn" title="Редактировать">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                </button>
+                <button class="profile-action-btn delete-btn" title="Удалить">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="profile-details">
+            <span class="profile-type ${profile.type || 'http'}">${(profile.type || 'http').toUpperCase()}</span>
+            <span>${escapeHtml(profile.host)}:${profile.port}</span>
+            ${profile.username ? '<span class="auth-indicator">🔐</span>' : ''}
+        </div>
+    `
+
+    // События
+    element.addEventListener('click', (e) => {
+        if (!e.target.closest('.profile-actions')) {
+            activateProfile(profile.id)
+        }
+    })
+
+    element.querySelector('.copy-btn').addEventListener('click', (e) => {
+        e.stopPropagation()
+        copyProfile(profile)
+    })
+
+    element.querySelector('.edit-btn').addEventListener('click', (e) => {
+        e.stopPropagation()
+        editProfile(profile.id)
+    })
+
+    element.querySelector('.delete-btn').addEventListener('click', (e) => {
+        e.stopPropagation()
+        deleteProfile(profile.id)
+    })
+
+    return element
+}
+
+// Активация профиля
+function activateProfile(profileId) {
+    const profile = state.profiles.find((p) => p.id === profileId)
+    if (!profile) return
+
+    const profileElement = document.querySelector(`[data-id="${profileId}"]`)
+    if (profileElement) {
+        profileElement.classList.add('loading')
+    }
+
+    chrome.runtime.sendMessage({ action: 'applyProxy', profile }, (response) => {
+        if (profileElement) {
+            profileElement.classList.remove('loading')
+        }
+
+        if (response?.success) {
+            state.activeProfileId = profileId
+            saveProfiles()
+            updateStatus()
+        } else {
+            showConfirmDialog('Ошибка при подключении к прокси-серверу')
+        }
+    })
+}
+
+// Отключение прокси
+function disableProxy() {
+    chrome.runtime.sendMessage({ action: 'disableProxy' }, (response) => {
+        if (response?.success) {
+            state.activeProfileId = null
+            saveProfiles()
+            updateStatus()
+        }
+    })
+}
+
+// Быстрое переключение
+function handleQuickToggle() {
+    if (state.activeProfileId) {
+        disableProxy()
+    } else if (state.profiles.length > 0) {
+        // Активируем последний использованный или первый профиль
+        const lastProfileId = localStorage.getItem('lastActiveProfile')
+        const profileToActivate = lastProfileId && state.profiles.find((p) => p.id === lastProfileId) ? lastProfileId : state.profiles[0].id
+        activateProfile(profileToActivate)
+    } else {
+        showAddProfileForm()
+    }
+}
+
+// Копирование профиля
+function copyProfile(profile) {
+    let text = ''
+    if (profile.type && profile.type !== 'http') {
+        text += `${profile.type.toUpperCase()} `
+    }
+
+    if (profile.username && profile.password) {
+        text += `${profile.username}:${profile.password}@${profile.host}:${profile.port}`
+    } else {
+        text += `${profile.host}:${profile.port}`
+    }
+
+    navigator.clipboard
+        .writeText(text)
+        .then(() => {
+            showToast('Скопировано в буфер обмена')
+        })
+        .catch(() => {
+            showConfirmDialog('Не удалось скопировать в буфер обмена')
         })
 }
 
-// Активация
-function activateProfile(id) {
-    const p = profiles.find((x) => x.id === id)
-    if (!p) return
-    const item = document.querySelector(`[data-id="${id}"]`)
-    item?.classList.add('loading')
-    chrome.runtime.sendMessage({ action: 'applyProxy', profile: p }, (res) => {
-        item?.classList.remove('loading')
-        if (res?.success) {
-            activeProfileId = id
-            saveProfiles()
-            renderProfiles()
-            updateStatus()
-        }
-    })
-}
-
-// Отключение
-function disableProxy() {
-    chrome.runtime.sendMessage({ action: 'disableProxy' }, (res) => {
-        if (res?.success) {
-            activeProfileId = null
-            saveProfiles()
-            renderProfiles()
-            updateStatus()
-        }
-    })
-}
-function handleDisableProxy() {
-    if (activeProfileId) {
-        showConfirmDialog('Отключить прокси?', () => disableProxy())
-    } else {
-        disableProxy()
-    }
-}
-
-// Добавление/редактирование
+// Показ формы добавления профиля
 function showAddProfileForm() {
-    editingProfileId = null
-    formTitle.textContent = 'Новый профиль'
-    proxyForm.reset()
-    document.getElementById('proxyType').value = 'http'
-    profileForm.classList.remove('hidden')
-    addProfileBtn.style.display = 'none'
-    setTimeout(() => document.getElementById('profileName').focus(), 100)
-}
-function hideProfileForm() {
-    profileForm.classList.add('hidden')
-    addProfileBtn.style.display = 'block'
-    proxyForm.reset()
+    state.editingProfileId = null
+    elements.formTitle.textContent = 'Новый профиль'
+    elements.proxyForm.reset()
+    elements.proxyType.value = 'http'
+    elements.useAuth.checked = false
+    toggleAuthFields()
+    elements.profileForm.classList.remove('hidden')
+
+    setTimeout(() => {
+        elements.profileName.focus()
+    }, 100)
 }
 
-function handleFormSubmit(e) {
-    e.preventDefault()
-    const data = {
-        name: document.getElementById('profileName').value.trim(),
-        type: document.getElementById('proxyType').value,
-        host: document.getElementById('proxyHost').value.trim(),
-        port: document.getElementById('proxyPort').value.trim(),
-        username: document.getElementById('proxyUsername').value.trim(),
-        password: document.getElementById('proxyPassword').value.trim(),
-    }
-    if (!data.name || !data.host || !data.port) {
-        showConfirmDialog('Заполните обязательные поля', null)
-        return
-    }
-    const portNum = parseInt(data.port)
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-        showConfirmDialog('Порт должен быть от 1 до 65535', null)
-        return
-    }
-    const dup = profiles.find((p) => p.name.toLowerCase() === data.name.toLowerCase() && p.id !== editingProfileId)
-    if (dup) {
-        showConfirmDialog('Профиль с таким именем уже существует', null)
-        return
-    }
-    if (editingProfileId) {
-        const idx = profiles.findIndex((p) => p.id === editingProfileId)
-        profiles[idx] = { ...data, id: editingProfileId }
-        if (editingProfileId === activeProfileId) activateProfile(editingProfileId)
+// Скрытие формы профиля
+function hideProfileForm() {
+    elements.profileForm.classList.add('hidden')
+    elements.proxyForm.reset()
+    state.editingProfileId = null
+}
+
+// Переключение полей авторизации
+function toggleAuthFields() {
+    if (elements.useAuth.checked) {
+        elements.authFields.classList.remove('hidden')
     } else {
-        profiles.push({ ...data, id: Date.now().toString() })
+        elements.authFields.classList.add('hidden')
+        elements.proxyUsername.value = ''
+        elements.proxyPassword.value = ''
     }
+}
+
+// Обработка отправки формы
+async function handleFormSubmit(e) {
+    e.preventDefault()
+
+    const formData = {
+        name: elements.profileName.value.trim(),
+        type: elements.proxyType.value,
+        host: elements.proxyHost.value.trim(),
+        port: elements.proxyPort.value.trim(),
+        username: elements.useAuth.checked ? elements.proxyUsername.value.trim() : '',
+        password: elements.useAuth.checked ? elements.proxyPassword.value.trim() : '',
+    }
+
+    // Валидация
+    if (!formData.name || !formData.host || !formData.port) {
+        showConfirmDialog('Пожалуйста, заполните все обязательные поля')
+        return
+    }
+
+    const port = parseInt(formData.port)
+    if (isNaN(port) || port < 1 || port > 65535) {
+        showConfirmDialog('Порт должен быть числом от 1 до 65535')
+        return
+    }
+
+    // Проверка дублирования имени
+    const duplicate = state.profiles.find((p) => p.name.toLowerCase() === formData.name.toLowerCase() && p.id !== state.editingProfileId)
+
+    if (duplicate) {
+        showConfirmDialog('Профиль с таким именем уже существует')
+        return
+    }
+
+    // Загружаем геолокацию для нового IP (в фоне)
+    if (!state.geoCache[formData.host]) {
+        getIPGeolocation(formData.host).catch(() => {
+            // Игнорируем ошибки геолокации
+        })
+    }
+
+    if (state.editingProfileId) {
+        // Редактирование
+        const index = state.profiles.findIndex((p) => p.id === state.editingProfileId)
+        if (index !== -1) {
+            state.profiles[index] = { ...formData, id: state.editingProfileId }
+
+            // Если редактируем активный профиль, переподключаемся
+            if (state.editingProfileId === state.activeProfileId) {
+                activateProfile(state.editingProfileId)
+            }
+        }
+    } else {
+        // Добавление
+        const newProfile = { ...formData, id: Date.now().toString() }
+        state.profiles.push(newProfile)
+    }
+
     saveProfiles()
     renderProfiles()
     hideProfileForm()
+
+    showToast(state.editingProfileId ? 'Профиль обновлен' : 'Профиль создан')
 }
 
-function copyProfile(p) {
-    let txt = ''
-    if (p.type && p.type !== 'http') txt += p.type.toUpperCase() + ' '
-    if (p.username && p.password) {
-        txt += `${p.username}:${p.password}@${p.host}:${p.port}`
-    } else {
-        txt += `${p.host}:${p.port}`
+// Редактирование профиля
+function editProfile(profileId) {
+    const profile = state.profiles.find((p) => p.id === profileId)
+    if (!profile) return
+
+    state.editingProfileId = profileId
+    elements.formTitle.textContent = 'Редактировать профиль'
+
+    elements.profileName.value = profile.name
+    elements.proxyType.value = profile.type || 'http'
+    elements.proxyHost.value = profile.host
+    elements.proxyPort.value = profile.port
+
+    const hasAuth = profile.username || profile.password
+    elements.useAuth.checked = hasAuth
+
+    if (hasAuth) {
+        elements.proxyUsername.value = profile.username || ''
+        elements.proxyPassword.value = profile.password || ''
     }
-    navigator.clipboard.writeText(txt).then(() => {
-        const btn = document.querySelector(`.copy-btn[data-id="${p.id}"]`)
-        const orig = btn.textContent
-        btn.textContent = '✓'
-        setTimeout(() => (btn.textContent = orig), 1500)
-    })
+
+    toggleAuthFields()
+    elements.profileForm.classList.remove('hidden')
+
+    setTimeout(() => {
+        elements.profileName.focus()
+    }, 100)
 }
 
-function editProfile(id) {
-    const p = profiles.find((x) => x.id === id)
-    if (!p) return
-    editingProfileId = id
-    formTitle.textContent = 'Редактировать профиль'
-    document.getElementById('profileName').value = p.name
-    document.getElementById('proxyType').value = p.type || 'http'
-    document.getElementById('proxyHost').value = p.host
-    document.getElementById('proxyPort').value = p.port
-    document.getElementById('proxyUsername').value = p.username || ''
-    document.getElementById('proxyPassword').value = p.password || ''
-    profileForm.classList.remove('hidden')
-    addProfileBtn.style.display = 'none'
-    setTimeout(() => document.getElementById('profileName').focus(), 100)
-}
+// Удаление профиля
+function deleteProfile(profileId) {
+    const profile = state.profiles.find((p) => p.id === profileId)
+    if (!profile) return
 
-function deleteProfile(id) {
-    const p = profiles.find((x) => x.id === id)
-    if (!p) return
-    showConfirmDialog(`Удалить профиль "${p.name}"?`, () => {
-        profiles = profiles.filter((x) => x.id !== id)
-        if (activeProfileId === id) disableProxy()
+    showConfirmDialog(`Удалить профиль "${profile.name}"?`, () => {
+        state.profiles = state.profiles.filter((p) => p.id !== profileId)
+
+        if (state.activeProfileId === profileId) {
+            disableProxy()
+        }
+
         saveProfiles()
         renderProfiles()
+        showToast('Профиль удален')
     })
 }
 
-// Разбор строки с прокси
-function parseProxy(line) {
+// Показ формы импорта
+function showImportForm() {
+    elements.importForm.classList.remove('hidden')
+    setTimeout(() => {
+        elements.importText.focus()
+    }, 100)
+}
+
+// Скрытие формы импорта
+function hideImportForm() {
+    elements.importForm.classList.add('hidden')
+    elements.importText.value = ''
+}
+
+// Парсинг строки прокси
+function parseProxyLine(line) {
     line = line.trim()
     if (!line) return null
+
     let customName = null
     let proxyType = 'http'
 
-    // только если после двоеточия есть пробел — "Имя: данные"
+    // Проверка на имя профиля
     const nameMatch = line.match(/^([^:]+):\s+(.+)$/)
     if (nameMatch) {
         customName = nameMatch[1].trim()
         line = nameMatch[2].trim()
     }
 
-    // тип прокси в начале
+    // Проверка типа прокси
     const typeMatch = line.match(/^(socks5|socks4|http|https)\s+(.+)$/i)
     if (typeMatch) {
         proxyType = typeMatch[1].toLowerCase()
@@ -312,182 +516,370 @@ function parseProxy(line) {
     }
 
     let result = null
+
     // user:pass@host:port
-    const auth = line.match(/^([^:@]+):([^:@]+)@([^:@]+):(\d+)$/)
-    if (auth) {
+    const authFormat1 = line.match(/^([^:@]+):([^:@]+)@([^:@]+):(\d+)$/)
+    if (authFormat1) {
         result = {
-            username: auth[1],
-            password: auth[2],
-            host: auth[3],
-            port: auth[4],
+            username: authFormat1[1],
+            password: authFormat1[2],
+            host: authFormat1[3],
+            port: authFormat1[4],
             type: proxyType,
         }
     }
-    // ip:port:user:pass
+
+    // host:port:user:pass
     if (!result) {
-        const cols = line.match(/^([^:]+):(\d+):([^:]+):(.+)$/)
-        if (cols) {
+        const authFormat2 = line.match(/^([^:]+):(\d+):([^:]+):(.+)$/)
+        if (authFormat2) {
             result = {
-                host: cols[1],
-                port: cols[2],
-                username: cols[3],
-                password: cols[4],
+                host: authFormat2[1],
+                port: authFormat2[2],
+                username: authFormat2[3],
+                password: authFormat2[4],
                 type: proxyType,
             }
         }
     }
-    // ip:port
+
+    // host:port
     if (!result) {
-        const simple = line.match(/^([^:]+):(\d+)$/)
-        if (simple) {
+        const simpleFormat = line.match(/^([^:]+):(\d+)$/)
+        if (simpleFormat) {
             result = {
-                host: simple[1],
-                port: simple[2],
+                host: simpleFormat[1],
+                port: simpleFormat[2],
                 username: '',
                 password: '',
                 type: proxyType,
             }
         }
     }
+
     if (result && customName) {
         result.customName = customName
     }
+
     return result
 }
 
-// Импорт
-function processImport() {
-    const text = importText.value.trim()
+// Обработка импорта
+async function processImport() {
+    const text = elements.importText.value.trim()
     if (!text) {
-        showConfirmDialog('Введите данные прокси', null)
+        showConfirmDialog('Введите данные для импорта')
         return
     }
+
     const lines = text.split('\n')
-    let imported = 0,
-        skipped = 0,
-        firstId = null
-    lines.forEach((ln, i) => {
-        const d = parseProxy(ln)
-        if (d) {
-            const exists = profiles.some((p) => p.host === d.host && p.port === d.port && p.username === d.username)
+    let imported = 0
+    let skipped = 0
+    let firstProfileId = null
+
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index]
+        const parsed = parseProxyLine(line)
+
+        if (parsed) {
+            // Проверка на дублирование
+            const exists = state.profiles.some(
+                (p) => p.host === parsed.host && p.port === parsed.port && (p.username || '') === (parsed.username || '')
+            )
+
             if (exists) {
                 skipped++
-                return
+                continue
             }
-            const newP = {
-                name: d.customName || `Профиль ${profiles.length + imported + 1}`,
-                type: d.type,
-                host: d.host,
-                port: d.port,
-                username: d.username || '',
-                password: d.password || '',
-                id: Date.now().toString() + i,
+
+            const newProfile = {
+                name: parsed.customName || `Импорт ${imported + 1}`,
+                type: parsed.type,
+                host: parsed.host,
+                port: parsed.port,
+                username: parsed.username || '',
+                password: parsed.password || '',
+                id: `${Date.now()}_${index}`,
             }
-            profiles.push(newP)
-            if (imported === 0) firstId = newP.id
+
+            state.profiles.push(newProfile)
+
+            if (imported === 0) {
+                firstProfileId = newProfile.id
+            }
+
+            // Загружаем геолокацию в фоне
+            if (!state.geoCache[parsed.host]) {
+                getIPGeolocation(parsed.host).catch(() => {
+                    // Игнорируем ошибки геолокации
+                })
+            }
+
             imported++
-        } else if (ln.trim()) {
+        } else if (line.trim()) {
             skipped++
         }
-    })
+    }
+
     if (imported > 0) {
         saveProfiles()
         renderProfiles()
         hideImportForm()
-        let msg = `Импортировано: ${imported}` + (skipped ? `\nПропущено: ${skipped}` : '') + '\n\nАктивировать первый?'
-        showConfirmDialog(msg, () => firstId && activateProfile(firstId))
+
+        let message = `Импортировано: ${imported}`
+        if (skipped > 0) {
+            message += `\nПропущено: ${skipped}`
+        }
+        message += '\n\nАктивировать первый импортированный профиль?'
+
+        showConfirmDialog(message, () => {
+            if (firstProfileId) {
+                activateProfile(firstProfileId)
+            }
+        })
     } else {
-        showConfirmDialog('Не удалось импортировать', null)
+        showConfirmDialog('Не удалось импортировать ни одного профиля. Проверьте формат данных.')
     }
 }
 
-// Экспорт
+// Экспорт профилей
 function exportProfiles() {
-    if (!profiles.length) {
-        showConfirmDialog('Нет профилей для экспорта', null)
+    if (state.profiles.length === 0) {
+        showConfirmDialog('Нет профилей для экспорта')
         return
     }
-    let txt = ''
-    profiles.forEach((p) => {
-        let line = p.name + ': '
-        if (p.type && p.type !== 'http') line += p.type.toUpperCase() + ' '
-        if (p.username && p.password) {
-            line += `${p.username}:${p.password}@${p.host}:${p.port}`
-        } else {
-            line += `${p.host}:${p.port}`
+
+    let exportText = ''
+    state.profiles.forEach((profile) => {
+        let line = `${profile.name}: `
+
+        if (profile.type && profile.type !== 'http') {
+            line += `${profile.type.toUpperCase()} `
         }
-        txt += line + '\n'
+
+        if (profile.username && profile.password) {
+            line += `${profile.username}:${profile.password}@${profile.host}:${profile.port}`
+        } else {
+            line += `${profile.host}:${profile.port}`
+        }
+
+        exportText += line + '\n'
     })
-    const blob = new Blob([txt], { type: 'text/plain' })
+
+    const blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `proxy-export-${new Date().toISOString().split('T')[0]}.txt`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    const link = document.createElement('a')
+
+    link.href = url
+    link.download = `proxy-profiles-${new Date().toISOString().split('T')[0]}.txt`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    showConfirmDialog(`Экспортировано: ${profiles.length}`, null)
+
+    showToast(`Экспортировано ${state.profiles.length} профилей`)
 }
 
-// Показ/скрытие форм
-function showImportForm() {
-    importForm.classList.remove('hidden')
-    addProfileBtn.style.display = 'none'
-    setTimeout(() => importText.focus(), 100)
-}
-function hideImportForm() {
-    importForm.classList.add('hidden')
-    addProfileBtn.style.display = 'block'
-    importText.value = ''
-}
-
-// Открыть боковую панель и закрыть popup
+// Открытие в боковой панели
 function openInSidePanel() {
-    chrome.windows.getCurrent((win) => {
-        chrome.runtime.sendMessage({ action: 'openSidePanel', windowId: win.id }, () => {
-            window.close()
+    chrome.windows.getCurrent((currentWindow) => {
+        chrome.runtime.sendMessage({ action: 'openSidePanel', windowId: currentWindow.id }, (response) => {
+            if (response?.success) {
+                // Закрываем popup правильным способом
+                if (chrome.extension.getViews({ type: 'popup' }).length > 0) {
+                    chrome.extension.getViews({ type: 'popup' })[0].close()
+                }
+            }
         })
     })
 }
 
-// Диалог подтверждения
+// Модальное окно подтверждения
 function showConfirmDialog(message, callback = null) {
-    confirmMessage.textContent = message
-    confirmCallback = callback
-    confirmModal.classList.remove('hidden')
-    if (!callback) {
-        confirmYes.textContent = 'ОК'
-        confirmNo.style.display = 'none'
+    elements.confirmMessage.textContent = message
+    state.confirmCallback = callback
+    elements.confirmModal.classList.remove('hidden')
+
+    if (callback) {
+        elements.confirmYes.style.display = 'inline-flex'
+        elements.confirmNo.textContent = 'Нет'
+        elements.confirmYes.textContent = 'Да'
     } else {
-        confirmYes.textContent = 'Да'
-        confirmNo.style.display = 'block'
+        elements.confirmYes.style.display = 'inline-flex'
+        elements.confirmNo.style.display = 'none'
+        elements.confirmYes.textContent = 'ОК'
     }
 }
+
 function handleConfirmYes() {
-    confirmModal.classList.add('hidden')
-    if (confirmCallback) confirmCallback()
-    confirmCallback = null
-    confirmYes.textContent = 'Да'
-    confirmNo.style.display = 'block'
+    elements.confirmModal.classList.add('hidden')
+    if (state.confirmCallback) {
+        state.confirmCallback()
+        state.confirmCallback = null
+    }
+    resetConfirmModal()
 }
+
 function handleConfirmNo() {
-    confirmModal.classList.add('hidden')
-    confirmCallback = null
-    confirmYes.textContent = 'Да'
-    confirmNo.style.display = 'block'
+    elements.confirmModal.classList.add('hidden')
+    state.confirmCallback = null
+    resetConfirmModal()
 }
 
-// HTML-экранирование
-function escapeHtml(txt) {
-    const d = document.createElement('div')
-    d.textContent = txt
-    return d.innerHTML
+function resetConfirmModal() {
+    elements.confirmYes.textContent = 'Да'
+    elements.confirmNo.textContent = 'Нет'
+    elements.confirmYes.style.display = 'inline-flex'
+    elements.confirmNo.style.display = 'inline-flex'
 }
 
-// Ошибки от background
-chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.action === 'proxyError') {
-        showConfirmDialog(`Ошибка прокси:\n${msg.error}`, null)
+// Уведомления (toast)
+function showToast(message) {
+    // Простая реализация toast-уведомления
+    const toast = document.createElement('div')
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--success);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        z-index: 2000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        animation: slideDown 0.3s ease-out;
+    `
+    toast.textContent = message
+
+    document.body.appendChild(toast)
+
+    setTimeout(() => {
+        toast.style.animation = 'slideUp 0.3s ease-out forwards'
+        setTimeout(() => {
+            if (toast.parentNode) {
+                document.body.removeChild(toast)
+            }
+        }, 300)
+    }, 2500)
+}
+
+// Получение геолокации IP
+async function getIPGeolocation(ip) {
+    // Проверяем кэш
+    if (state.geoCache[ip]) {
+        return state.geoCache[ip]
+    }
+
+    try {
+        // Используем бесплатный API ipapi.co (1000 запросов в день)
+        const response = await fetch(`https://ipapi.co/${ip}/json/`)
+        if (!response.ok) throw new Error('API недоступен')
+
+        const data = await response.json()
+
+        if (data.error) {
+            throw new Error(data.reason || 'Ошибка API')
+        }
+
+        const geoData = {
+            country: data.country_name || 'Неизвестно',
+            country_code: data.country_code || '',
+            city: data.city || '',
+            region: data.region || '',
+            timestamp: Date.now(),
+        }
+
+        // Сохраняем в кэш
+        state.geoCache[ip] = geoData
+        saveProfiles()
+
+        return geoData
+    } catch (error) {
+        console.error('Ошибка получения геолокации:', error)
+
+        // Возвращаем базовую информацию
+        const fallbackData = {
+            country: 'Неизвестно',
+            country_code: '',
+            city: '',
+            region: '',
+            timestamp: Date.now(),
+        }
+
+        state.geoCache[ip] = fallbackData
+        return fallbackData
+    }
+}
+
+// Получение флага страны
+function getCountryFlag(countryCode) {
+    if (!countryCode || countryCode.length !== 2) return '🌐'
+
+    // Конвертируем код страны в эмодзи флага
+    const codePoints = countryCode
+        .toUpperCase()
+        .split('')
+        .map((char) => 127397 + char.charCodeAt())
+
+    return String.fromCodePoint(...codePoints)
+}
+
+// Форматирование геолокации для отображения
+function formatGeoLocation(geoData) {
+    if (!geoData || geoData.country === 'Неизвестно') {
+        return { flag: '🌐', text: 'Неизвестно' }
+    }
+
+    const flag = getCountryFlag(geoData.country_code)
+    let text = geoData.country
+
+    if (geoData.city) {
+        text = `${geoData.city}, ${geoData.country}`
+    }
+
+    return { flag, text }
+}
+
+// Экранирование HTML
+function escapeHtml(text) {
+    const div = document.createElement('div')
+    div.textContent = text
+    return div.innerHTML
+}
+
+// Обработка сообщений от background скрипта
+chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === 'proxyError') {
+        showConfirmDialog(`Ошибка прокси:\n${message.error}`)
     }
 })
+
+// Добавляем стили для анимации toast
+const style = document.createElement('style')
+style.textContent = `
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+    }
+    
+    @keyframes slideUp {
+        from {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        to {
+            opacity: 0;
+            transform: translateX(-50%) translateY(-20px);
+        }
+    }
+`
+document.head.appendChild(style)
