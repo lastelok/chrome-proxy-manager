@@ -61,6 +61,7 @@ async function applyProxy(profile) {
         proxyState.isActive = true
         await chrome.storage.local.set({ activeProfile: profile })
 
+        updateBadge() // Обновляем badge после применения прокси
         console.log('🎉 Прокси успешно применен')
         return { success: true }
     } catch (error) {
@@ -164,6 +165,7 @@ async function disableProxy() {
         proxyState.authCredentials = null
 
         await chrome.storage.local.remove(['activeProfile'])
+        updateBadge() // Обновляем badge после отключения прокси
         console.log('✅ Прокси успешно отключен')
         return { success: true }
     } catch (error) {
@@ -247,13 +249,21 @@ async function clearAuthRules() {
     }
 }
 
-// Обновление индикатора
+// Обновление динамического индикатора (badge)
 function updateBadge() {
-    const text = proxyState.isActive ? '●' : ''
-    const color = proxyState.isActive ? '#10b981' : '#ef4444'
+    if (proxyState.isActive) {
+        // Прокси включен - зеленый цвет и точка
+        chrome.action.setBadgeText({ text: '●' })
+        chrome.action.setBadgeBackgroundColor({ color: '#10b981' }) // Зеленый
+        chrome.action.setTitle({ title: `Proxy Manager - Активен: ${proxyState.activeProfile?.name || 'Неизвестно'}` })
+    } else {
+        // Прокси отключен - желтый цвет и точка
+        chrome.action.setBadgeText({ text: '●' })
+        chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' }) // Желтый
+        chrome.action.setTitle({ title: 'Proxy Manager - Отключен' })
+    }
 
-    chrome.action.setBadgeText({ text })
-    chrome.action.setBadgeBackgroundColor({ color })
+    console.log('🔄 Badge обновлен:', proxyState.isActive ? 'зеленый (активен)' : 'желтый (отключен)')
 }
 
 // Обработка запросов авторизации (с блокировкой через webRequestAuthProvider)
@@ -328,3 +338,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 console.log('Simple Proxy Manager загружен')
 console.log('Используется множественная авторизация через declarativeNetRequest')
+console.log('Динамический badge: желтый (отключен) / зеленый (включен)')
