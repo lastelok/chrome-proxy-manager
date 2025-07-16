@@ -3,6 +3,7 @@ const elements = {
     // Статус
     statusIndicator: document.getElementById('statusIndicator'),
     quickToggleBtn: document.getElementById('quickToggleBtn'),
+    versionInfo: document.getElementById('versionInfo'),
 
     // Профили
     profilesList: document.getElementById('profilesList'),
@@ -63,6 +64,78 @@ function init() {
     updateStatus()
     bindEvents()
     loadGeoCache()
+    loadVersionInfo()
+    addDebugButton()
+}
+
+// Добавление кнопки отладки
+function addDebugButton() {
+    // Проверяем, не добавлена ли уже кнопка
+    if (document.getElementById('debugBtn')) return
+
+    const debugBtn = document.createElement('button')
+    debugBtn.id = 'debugBtn'
+    debugBtn.className = 'debug-btn'
+    debugBtn.title = 'Отладка аутентификации'
+    debugBtn.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6m0 6v6"/>
+            <path d="m21 12-6 0m-6 0-6 0"/>
+        </svg>
+    `
+    
+    debugBtn.addEventListener('click', showDebugInfo)
+    
+    // Добавляем кнопку в header
+    const headerRight = document.querySelector('.header-right')
+    headerRight.insertBefore(debugBtn, headerRight.firstChild)
+}
+
+// Показ отладочной информации
+function showDebugInfo() {
+    chrome.runtime.sendMessage({ action: 'debugAuth' }, (response) => {
+        if (response?.success) {
+            const debug = response.debug
+            let message = `🔍 ОТЛАДОЧНАЯ ИНФОРМАЦИЯ\n\n`
+            message += `📡 Прокси активен: ${debug.isActive ? 'ДА' : 'НЕТ'}\n`
+            
+            if (debug.currentProfile) {
+                message += `📋 Текущий профиль: ${debug.currentProfile.name}\n`
+                message += `🌐 Хост: ${debug.currentProfile.host}:${debug.currentProfile.port}\n`
+                message += `🔗 Тип: ${debug.currentProfile.type || 'http'}\n`
+                message += `👤 Логин в профиле: ${debug.currentProfile.username || 'НЕ ЗАДАН'}\n`
+                message += `🔐 Пароль в профиле: ${debug.currentProfile.password ? 'ЗАДАН' : 'НЕ ЗАДАН'}\n`
+            } else {
+                message += `📋 Текущий профиль: НЕТ\n`
+            }
+            
+            if (debug.authCredentials) {
+                message += `\n🔑 АКТИВНЫЕ УЧЕТНЫЕ ДАННЫЕ:\n`
+                message += `👤 Логин: ${debug.authCredentials.username || 'НЕ ЗАДАН'}\n`
+                message += `🔐 Пароль: ${debug.authCredentials.password ? 'ЗАДАН (' + debug.authCredentials.password.length + ' символов)' : 'НЕ ЗАДАН'}\n`
+            } else {
+                message += `\n🔑 АКТИВНЫЕ УЧЕТНЫЕ ДАННЫЕ: НЕ ЗАДАНЫ\n`
+            }
+            
+            if (debug.pendingAuthCredentials) {
+                message += `\n⏳ ОЖИДАЮЩИЕ УЧЕТНЫЕ ДАННЫЕ:\n`
+                message += `👤 Логин: ${debug.pendingAuthCredentials.username || 'НЕ ЗАДАН'}\n`
+                message += `🔐 Пароль: ${debug.pendingAuthCredentials.password ? 'ЗАДАН' : 'НЕ ЗАДАН'}\n`
+            }
+            
+            message += `\n🆘 ЕСЛИ АВТОРИЗАЦИЯ НЕ РАБОТАЕТ:\n`
+            message += `1. Проверьте правильность логина и пароля\n`
+            message += `2. Перезагрузите расширение (chrome://extensions/)\n`
+            message += `3. Откройте DevTools (F12) и проверьте логи\n`
+            message += `4. Попробуйте отключить и снова включить прокси\n\n`
+            message += `💡 Попробуйте открыть httpbin.org/ip для проверки`
+            
+            showConfirmDialog(message)
+        } else {
+            showConfirmDialog('❌ Ошибка получения отладочной информации')
+        }
+    })
 }
 
 // Загрузка кеша геолокации
@@ -72,6 +145,14 @@ function loadGeoCache() {
             state.geoCache = new Map(Object.entries(result.geoCache))
         }
     })
+}
+
+// Загрузка версии из манифеста
+function loadVersionInfo() {
+    const manifest = chrome.runtime.getManifest()
+    if (manifest && manifest.version) {
+        elements.versionInfo.textContent = `v${manifest.version}`
+    }
 }
 
 // Получение геолокации
@@ -355,12 +436,25 @@ function activateProfile(profileId) {
     const profile = state.profiles.find((p) => p.id === profileId)
     if (!profile) return
 
+    console.log('🔄 Активируем профиль:', {
+        name: profile.name,
+        host: profile.host,
+        port: profile.port,
+        hasAuth: !!(profile.username && profile.password),
+        username: profile.username || 'НЕТ',
+        password: profile.password ? '***' : 'НЕТ'
+    })
+
+    // Проверяем, есть ли авторизация
+    const hasAuth = profile.username && profile.password
+
     const profileElement = document.querySelector(`[data-id="${profileId}"]`)
     if (profileElement) {
         profileElement.classList.add('loading')
     }
 
-    chrome.runtime.sendMessage({ action: 'applyProxy', profile }, (response) => {
+    // ВАЖНО: Передаем полный объект профиля с учетными данными
+    chrome.runtime.sendMessage({ action: 'applyProxy', profile: profile }, (response) => {
         if (profileElement) {
             profileElement.classList.remove('loading')
         }
@@ -369,8 +463,18 @@ function activateProfile(profileId) {
             state.activeProfileId = profileId
             saveProfiles()
             updateStatus()
+            
+            // Показываем информацию о работе с авторизацией
+            if (hasAuth) {
+                showToast('Прокси подключен. Авторизация настроена автоматически')
+                console.log('✅ Профиль с авторизацией успешно активирован')
+            } else {
+                showToast('Прокси подключен')
+                console.log('✅ Профиль без авторизации успешно активирован')
+            }
         } else {
-            showConfirmDialog('Ошибка при подключении к прокси-серверу')
+            console.error('❌ Ошибка активации профиля:', response?.error)
+            showConfirmDialog('Ошибка при подключении к прокси-серверу: ' + (response?.error || 'Неизвестная ошибка'))
         }
     })
 }
@@ -389,13 +493,22 @@ function disableProxy() {
 // Быстрое переключение
 function handleQuickToggle() {
     if (state.activeProfileId) {
+        console.log('🔌 Отключаем текущий прокси')
         disableProxy()
     } else if (state.profiles.length > 0) {
         // Активируем последний использованный или первый профиль
         const lastProfileId = localStorage.getItem('lastActiveProfile')
         const profileToActivate = lastProfileId && state.profiles.find((p) => p.id === lastProfileId) ? lastProfileId : state.profiles[0].id
+        
+        const profile = state.profiles.find((p) => p.id === profileToActivate)
+        console.log('⚡ Быстрое переключение на профиль:', {
+            name: profile?.name,
+            hasAuth: !!(profile?.username && profile?.password)
+        })
+        
         activateProfile(profileToActivate)
     } else {
+        console.log('➕ Нет профилей, открываем форму создания')
         showAddProfileForm()
     }
 }
@@ -692,6 +805,7 @@ async function processImport() {
 
             if (exists) {
                 skipped++
+                errors.push(`Строка ${index + 1}: Прокси ${parsed.host}:${parsed.port} уже существует`)
                 continue
             }
 
@@ -700,7 +814,7 @@ async function processImport() {
             if (parsed.customName) {
                 profileName = generateUniqueImportName(parsed.customName, 1)
             } else {
-                profileName = generateUniqueImportName('Импорт', importCounter)
+                profileName = generateUniqueImportName('Прокси', importCounter)
                 importCounter++
             }
 
@@ -853,14 +967,16 @@ function resetConfirmModal() {
 }
 
 // Уведомления (toast)
-function showToast(message) {
+function showToast(message, type = 'success') {
     const toast = document.createElement('div')
+    const backgroundColor = type === 'error' ? '#ef4444' : 'var(--success)'
+    
     toast.style.cssText = `
         position: fixed;
         top: 20px;
         left: 50%;
         transform: translateX(-50%);
-        background: var(--success);
+        background: ${backgroundColor};
         color: white;
         padding: 12px 20px;
         border-radius: 8px;
@@ -874,6 +990,8 @@ function showToast(message) {
 
     document.body.appendChild(toast)
 
+    const duration = type === 'error' ? 4000 : 2500
+    
     setTimeout(() => {
         toast.style.animation = 'slideUp 0.3s ease-out forwards'
         setTimeout(() => {
@@ -881,7 +999,7 @@ function showToast(message) {
                 document.body.removeChild(toast)
             }
         }, 300)
-    }, 2500)
+    }, duration)
 }
 
 // Экранирование HTML
@@ -895,8 +1013,36 @@ function escapeHtml(text) {
 chrome.runtime.onMessage.addListener((message) => {
     if (message.action === 'proxyError') {
         showConfirmDialog(`Ошибка прокси:\n${message.error}`)
+    } else if (message.action === 'proxyConnectionError') {
+        // Показываем ошибку подключения, но не сбрасываем статус
+        showToast(`⚠️ Ошибка подключения: ${message.error}`, 'error')
+        console.error('Ошибка подключения к прокси:', message.error)
     }
 })
+
+// Стили для кнопки отладки
+const debugStyles = document.createElement('style')
+debugStyles.textContent = `
+    .debug-btn {
+        padding: 6px;
+        border: none;
+        background: var(--secondary);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        margin-right: 8px;
+    }
+    
+    .debug-btn:hover {
+        background: var(--hover-bg);
+        color: var(--text-primary);
+    }
+`
+document.head.appendChild(debugStyles)
 
 // Добавляем стили для анимации toast
 const style = document.createElement('style')

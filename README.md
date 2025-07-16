@@ -1,109 +1,111 @@
 # Chrome Proxy Manager
 
-**Chrome Proxy Manager** — оптимизированное расширение для управления прокси-серверами в Google Chrome с минимальным количеством кода и максимальной производительностью.
+Professional proxy management extension for Chrome with geolocation display.
 
-## ✨ Оптимизации версии
+## Features
 
--   🧹 **Удален неиспользуемый код** — убраны функции геолокации, избыточные console.log и дублированные обработчики
--   ⚡ **Уменьшен размер** — оптимизированы CSS стили, удалены неиспользуемые классы
--   🔧 **Упрощены permissions** — убрано избыточное разрешение webRequestAuthProvider
--   📦 **Чистый код** — улучшена читаемость и структура кода
+- 🌐 HTTP/HTTPS and SOCKS4/5 proxy support
+- 🔐 Automatic authentication handling
+- 📍 Geolocation display for proxy IPs
+- 💾 Import/Export proxy profiles
+- 🎨 Modern UI with dark mode support
+- ⚡ Quick toggle functionality
+- 📱 Side panel support
 
-## 📦 Возможности
+## Recent Fixes (v1.2.1)
 
-### Управление профилями
--   ✅ Создание и редактирование профилей прокси
--   🔄 Быстрое переключение между профилями одним кликом
--   📋 Копирование настроек профиля в буфер обмена
--   🗑️ Удаление ненужных профилей с подтверждением
+### 1. Fixed proxy status display on connection errors
+- The extension now maintains the active proxy status (green indicator) even when connection errors occur
+- Users receive error notifications without disrupting the visual state
+- This prevents confusion when temporary connection issues happen
 
-### Поддержка протоколов
--   🌐 **HTTP/HTTPS** — стандартные прокси
--   🔒 **SOCKS4** — базовый SOCKS протокол
--   🛡️ **SOCKS5** — расширенный SOCKS с поддержкой UDP
+### 2. Fixed authentication for multiple imported proxies
+- Previously, only the first imported proxy would have its credentials saved correctly
+- Now all imported proxies retain their authentication credentials properly
+- Each proxy profile maintains its own username/password combination
 
-### Аутентификация
--   🔐 Поддержка логина и пароля
--   🎛️ Удобное переключение авторизации
--   🔒 Безопасное хранение учетных данных
+### 3. Fixed proxy error logging
+- Error details are now properly logged to console instead of showing `[object Object]`
+- Added structured error information for better debugging
+- Connection errors are displayed as toast notifications
 
-### Индикация статуса
--   🟢 Визуальный индикатор активного подключения
--   📊 Отображение текущего профиля в статусбаре
--   ⚡ Быстрые действия прямо из статуса
+## Installation
 
-### Импорт/Экспорт
--   📥 **Импорт** профилей в различных форматах
--   📤 **Экспорт** всех профилей в файл
--   🔄 Автоматическое определение формата данных
--   ⚠️ Проверка дублирования при импорте
+1. Clone this repository
+2. Open Chrome and navigate to `chrome://extensions/`
+3. Enable "Developer mode"
+4. Click "Load unpacked" and select the extension directory
 
-### Интерфейс
--   🗂️ Открытие в боковой панели Chrome
--   📱 Адаптивный дизайн для разных размеров
--   🌙 Поддержка темной темы
--   ⌨️ Горячие клавиши (Escape для закрытия модальных окон)
+## Usage
 
-## 🚀 Установка
+### Adding Proxies
 
-1. **Скачайте** расширение или клонируйте репозиторий
-2. **Откройте Chrome** и перейдите на страницу расширений: `chrome://extensions/`
-3. **Включите** режим разработчика (Developer mode)
-4. **Нажмите** "Загрузить распакованное расширение" (Load unpacked)
-5. **Выберите** папку с расширением
+1. Click the "Add Profile" button
+2. Enter proxy details:
+   - Name: Custom name for the profile
+   - Type: HTTP/HTTPS, SOCKS4, or SOCKS5
+   - IP address and port
+   - Optional authentication credentials
 
-## 🎯 Использование
+### Importing Proxies
 
-### Быстрый старт
-1. **Нажмите** на иконку расширения в панели инструментов
-2. **Создайте** первый профиль кнопкой "Добавить профиль"
-3. **Заполните** данные прокси-сервера
-4. **Активируйте** профиль кликом по нему
+Supported formats:
+- `user:pass@ip:port` - With authentication
+- `ip:port:user:pass` - Alternative format
+- `ip:port` - Without authentication
+- `Name;any_format` - With custom name
+- `SOCKS5 ip:port` - With protocol specification
 
-### Форматы импорта
+### Quick Toggle
 
-Поддерживаемые форматы для импорта:
+- Click the toggle button to switch between the last active proxy and direct connection
+- The extension remembers your last used proxy for quick access
 
-```
-user:pass@ip:port          # Стандартный формат с авторизацией
-ip:port:user:pass          # Альтернативный формат
-ip:port                    # Без авторизации
-Название: любой_формат     # С пользовательским именем
-SOCKS5 192.168.1.1:1080   # С указанием типа
-```
+### Debugging
 
-## 🛠️ Структура проекта
+A debug button is available in the header (gear icon) to check:
+- Current proxy status
+- Active profile details
+- Authentication credentials status
+
+## Permissions
+
+- `proxy` - To manage proxy settings
+- `storage` - To save proxy profiles
+- `webRequest` - To handle proxy authentication
+- `sidePanel` - For side panel functionality
+
+## Privacy
+
+- Geolocation data is cached locally to reduce API requests
+- No personal data is transmitted to external servers
+- Authentication credentials are stored locally in Chrome's secure storage
+
+## Development
+
+### Project Structure
 
 ```
 chrome-proxy-manager/
-├── manifest.json          # Манифест расширения (MV3)
-├── background.js          # Service Worker (логика прокси)
-├── popup.html             # HTML интерфейса
-├── popup.css              # Стили (оптимизированные)
-├── popup.js               # JavaScript логика интерфейса
-├── icons/                 # Иконки расширения
-└── README.md              # Документация
+├── manifest.json       # Extension manifest
+├── background.js       # Service worker for proxy management
+├── popup.js           # Popup UI logic
+├── popup.html         # Popup UI structure
+├── popup.css          # Styles
+└── icons/             # Extension icons
 ```
 
-## 🧹 Проведенные оптимизации
+### Building from Source
 
-### Удаленные элементы:
--   **Функции геолокации IP** — getIPGeolocation, getCountryFlag, formatGeoLocation
--   **Кэш геолокации** — geoCache из состояния и storage
--   **Избыточные console.log** — оставлены только критически важные
--   **Дублированные обработчики** — объединены chrome.runtime.onInstalled
--   **Неиспользуемые CSS** — удалены стили для мобильных устройств
--   **Лишние permissions** — убрано webRequestAuthProvider
+No build process required - the extension runs directly from source files.
 
-### Упрощения:
--   **Чистый код** — улучшена читаемость и структура
--   **Меньше dependencies** — убраны неиспользуемые зависимости
--   **Оптимизированные стили** — компактный CSS без избыточности
+### Contributing
 
-## 📄 Лицензия
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-MIT License — вы можете свободно использовать, изменять и распространять этот код.
+## License
 
----
-
-**Наслаждайтесь быстрым и эффективным управлением прокси! 🚀**
+MIT License - see LICENSE file for details

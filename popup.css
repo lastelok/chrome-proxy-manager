@@ -124,6 +124,13 @@ body {
     height: 20px;
 }
 
+.version-text {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
 .header-right {
     display: flex;
     align-items: center;
@@ -209,6 +216,15 @@ body {
 
 .status-indicator.active .status-dot::before {
     background: var(--success);
+}
+
+/* Статус с ошибкой подключения */
+.status-indicator.active.error .status-dot {
+    background: var(--warning);
+}
+
+.status-indicator.active.error .status-dot::before {
+    background: var(--warning);
 }
 
 @keyframes pulse {
