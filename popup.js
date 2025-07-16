@@ -52,7 +52,7 @@ let state = {
     activeProfileId: null,
     editingProfileId: null,
     confirmCallback: null,
-    geoCache: {}, // Кэш для геолокации IP адресов
+    geoCache: new Map(),
 }
 
 // Инициализация
@@ -62,6 +62,62 @@ function init() {
     loadProfiles()
     updateStatus()
     bindEvents()
+    loadGeoCache()
+}
+
+// Загрузка кеша геолокации
+function loadGeoCache() {
+    chrome.storage.local.get(['geoCache'], (result) => {
+        if (result.geoCache) {
+            state.geoCache = new Map(Object.entries(result.geoCache))
+        }
+    })
+}
+
+// Получение геолокации
+async function getGeoLocation(ip) {
+    // Проверяем локальный кеш
+    if (state.geoCache.has(ip)) {
+        const cached = state.geoCache.get(ip)
+        // Проверяем актуальность (24 часа)
+        if (cached.lastUpdated && Date.now() - cached.lastUpdated < 24 * 60 * 60 * 1000) {
+            return cached
+        }
+    }
+
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'getGeoLocation', ip }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('Ошибка получения геолокации:', chrome.runtime.lastError)
+                resolve({
+                    country: 'Неизвестно',
+                    countryCode: null,
+                    city: null,
+                    timezone: null
+                })
+                return
+            }
+
+            if (response?.success && response.data) {
+                // Обновляем локальный кеш
+                state.geoCache.set(ip, response.data)
+                resolve(response.data)
+            } else {
+                resolve({
+                    country: 'Неизвестно',
+                    countryCode: null,
+                    city: null,
+                    timezone: null
+                })
+            }
+        })
+    })
+}
+
+// Получение URL флага
+function getFlagUrl(countryCode) {
+    if (!countryCode) return null
+    return `https://flagcdn.com/24x18/${countryCode}.png`
 }
 
 // Привязка событий
@@ -120,10 +176,9 @@ function handleKeyDown(e) {
 
 // Загрузка профилей
 function loadProfiles() {
-    chrome.storage.local.get(['profiles', 'activeProfileId', 'geoCache'], (result) => {
+    chrome.storage.local.get(['profiles', 'activeProfileId'], (result) => {
         state.profiles = result.profiles || []
         state.activeProfileId = result.activeProfileId || null
-        state.geoCache = result.geoCache || {}
         renderProfiles()
     })
 }
@@ -133,7 +188,6 @@ function saveProfiles() {
     chrome.storage.local.set({
         profiles: state.profiles,
         activeProfileId: state.activeProfileId,
-        geoCache: state.geoCache,
     })
 }
 
@@ -152,7 +206,7 @@ function updateStatus() {
             elements.statusIndicator.classList.add('active')
             elements.quickToggleBtn.classList.add('active')
             statusTitle.textContent = `Подключено: ${response.currentProfile.name}`
-            statusSubtitle.textContent = `${response.currentProfile.host}:${response.currentProfile.port}`
+            statusSubtitle.textContent = response.currentProfile.host
             state.activeProfileId = response.currentProfile.id
 
             // Сохраняем последний активный профиль для быстрого доступа
@@ -234,8 +288,14 @@ function createProfileElement(profile) {
             <span class="profile-type ${profile.type || 'http'}">${(profile.type || 'http').toUpperCase()}</span>
             <span>${escapeHtml(profile.host)}:${profile.port}</span>
             ${profile.username ? '<span class="auth-indicator">🔐</span>' : ''}
+            <div class="geo-info" data-ip="${profile.host}">
+                <span class="geo-loading">🌍</span>
+            </div>
         </div>
     `
+
+    // Загружаем геолокацию асинхронно
+    loadGeolocationForElement(element, profile.host)
 
     // События
     element.addEventListener('click', (e) => {
@@ -260,6 +320,34 @@ function createProfileElement(profile) {
     })
 
     return element
+}
+
+// Загрузка геолокации для элемента
+async function loadGeolocationForElement(element, ip) {
+    const geoInfoElement = element.querySelector('.geo-info')
+    
+    try {
+        const geoData = await getGeoLocation(ip)
+        
+        if (geoData.countryCode) {
+            const flagUrl = getFlagUrl(geoData.countryCode)
+            const countryInfo = geoData.city ? `${geoData.city}, ${geoData.country}` : geoData.country
+            
+            geoInfoElement.innerHTML = `
+                <img src="${flagUrl}" 
+                     alt="${geoData.country}" 
+                     class="country-flag" 
+                     title="${countryInfo}"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='inline'">
+                <span class="country-name" style="display: none">${geoData.country}</span>
+            `
+        } else {
+            geoInfoElement.innerHTML = `<span class="country-name">${geoData.country}</span>`
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки геолокации:', error)
+        geoInfoElement.innerHTML = '<span class="country-name">Неизвестно</span>'
+    }
 }
 
 // Активация профиля
@@ -399,13 +487,6 @@ async function handleFormSubmit(e) {
     if (duplicate) {
         showConfirmDialog('Профиль с таким именем уже существует')
         return
-    }
-
-    // Загружаем геолокацию для нового IP (в фоне)
-    if (!state.geoCache[formData.host]) {
-        getIPGeolocation(formData.host).catch(() => {
-            // Игнорируем ошибки геолокации
-        })
     }
 
     if (state.editingProfileId) {
@@ -608,13 +689,6 @@ async function processImport() {
                 firstProfileId = newProfile.id
             }
 
-            // Загружаем геолокацию в фоне
-            if (!state.geoCache[parsed.host]) {
-                getIPGeolocation(parsed.host).catch(() => {
-                    // Игнорируем ошибки геолокации
-                })
-            }
-
             imported++
         } else if (line.trim()) {
             skipped++
@@ -689,6 +763,9 @@ function openInSidePanel() {
                 if (chrome.extension.getViews({ type: 'popup' }).length > 0) {
                     chrome.extension.getViews({ type: 'popup' })[0].close()
                 }
+            } else {
+                console.error('Ошибка открытия боковой панели:', response?.error)
+                showToast('Ошибка открытия боковой панели')
             }
         })
     })
@@ -735,7 +812,6 @@ function resetConfirmModal() {
 
 // Уведомления (toast)
 function showToast(message) {
-    // Простая реализация toast-уведомления
     const toast = document.createElement('div')
     toast.style.cssText = `
         position: fixed;
@@ -764,83 +840,6 @@ function showToast(message) {
             }
         }, 300)
     }, 2500)
-}
-
-// Получение геолокации IP
-async function getIPGeolocation(ip) {
-    // Проверяем кэш
-    if (state.geoCache[ip]) {
-        return state.geoCache[ip]
-    }
-
-    try {
-        // Используем бесплатный API ipapi.co (1000 запросов в день)
-        const response = await fetch(`https://ipapi.co/${ip}/json/`)
-        if (!response.ok) throw new Error('API недоступен')
-
-        const data = await response.json()
-
-        if (data.error) {
-            throw new Error(data.reason || 'Ошибка API')
-        }
-
-        const geoData = {
-            country: data.country_name || 'Неизвестно',
-            country_code: data.country_code || '',
-            city: data.city || '',
-            region: data.region || '',
-            timestamp: Date.now(),
-        }
-
-        // Сохраняем в кэш
-        state.geoCache[ip] = geoData
-        saveProfiles()
-
-        return geoData
-    } catch (error) {
-        console.error('Ошибка получения геолокации:', error)
-
-        // Возвращаем базовую информацию
-        const fallbackData = {
-            country: 'Неизвестно',
-            country_code: '',
-            city: '',
-            region: '',
-            timestamp: Date.now(),
-        }
-
-        state.geoCache[ip] = fallbackData
-        return fallbackData
-    }
-}
-
-// Получение флага страны
-function getCountryFlag(countryCode) {
-    if (!countryCode || countryCode.length !== 2) return '🌐'
-
-    // Конвертируем код страны в эмодзи флага
-    const codePoints = countryCode
-        .toUpperCase()
-        .split('')
-        .map((char) => 127397 + char.charCodeAt())
-
-    return String.fromCodePoint(...codePoints)
-}
-
-// Форматирование геолокации для отображения
-function formatGeoLocation(geoData) {
-    if (!geoData || geoData.country === 'Неизвестно') {
-        return { flag: '🌐', text: 'Неизвестно' }
-    }
-
-    const flag = getCountryFlag(geoData.country_code)
-    let text = geoData.country
-
-    if (geoData.city) {
-        text = `${geoData.city}, ${geoData.country}`
-    }
-
-    return { flag, text }
 }
 
 // Экранирование HTML

@@ -77,6 +77,10 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 .app {
@@ -85,6 +89,8 @@ body {
     height: 100vh;
     background: var(--bg-primary);
     overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* Заголовок */
@@ -148,6 +154,7 @@ body {
     flex: 1;
     padding: 16px;
     overflow-y: auto;
+    overflow-x: hidden;
     max-height: calc(100vh - 60px);
 }
 
@@ -340,8 +347,10 @@ body {
 .profiles-list {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     margin-bottom: 12px;
-    max-height: 300px;
+    max-height: 280px;
+    min-height: 0;
 }
 
 .profile-card {
@@ -415,6 +424,7 @@ body {
     gap: 8px;
     font-size: 12px;
     color: var(--text-secondary);
+    flex-wrap: wrap;
 }
 
 .profile-type {
@@ -442,6 +452,47 @@ body {
 .auth-indicator {
     color: var(--success);
     font-size: 10px;
+}
+
+/* Геолокация */
+.geo-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.country-flag {
+    width: 20px;
+    height: 15px;
+    border-radius: 2px;
+    object-fit: cover;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.country-flag:hover {
+    transform: scale(1.1);
+}
+
+.country-name {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.geo-loading {
+    font-size: 12px;
+    animation: geo-spin 2s linear infinite;
+}
+
+@keyframes geo-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .empty-state {
@@ -596,6 +647,10 @@ body {
     color: var(--text-primary);
     font-size: 14px;
     transition: var(--transition);
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .form-group input:focus,
@@ -749,33 +804,6 @@ body {
     color: var(--text-primary);
 }
 
-.btn-danger {
-    background: var(--danger);
-    color: white;
-}
-
-.btn-danger:hover {
-    background: #dc2626;
-}
-
-/* Скроллбар */
-::-webkit-scrollbar {
-    width: 6px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--text-muted);
-}
-
 /* Анимации загрузки */
 .loading {
     opacity: 0.6;
@@ -802,20 +830,30 @@ body {
     }
 }
 
-/* Респонсивность */
-@media (max-width: 400px) {
-    body {
-        width: 360px;
-    }
+/* Скроллбар */
+::-webkit-scrollbar {
+    width: 4px;
+}
 
-    .form-row {
-        grid-template-columns: 1fr;
-    }
+::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 2px;
+}
 
-    .modal {
-        width: 95%;
-        margin: 10px;
-    }
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+    transition: var(--transition);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Скрываем скроллбар на основном контенте */
+.main::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
 }
 
 /* Утилиты */
@@ -823,14 +861,54 @@ body {
     display: none !important;
 }
 
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+/* Запрещаем выделение для кнопок и интерактивных элементов */
+button,
+.btn,
+.toggle-btn,
+.header-btn,
+.action-btn,
+.profile-action-btn,
+.close-btn,
+.add-profile-btn,
+.profile-card,
+.status-card,
+.profile-header,
+.profile-details,
+.status-indicator,
+.logo,
+.section-header,
+.count-badge,
+.profile-type,
+.auth-indicator,
+.geo-info,
+.country-flag,
+.country-name {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    cursor: default;
+}
+
+/* Кнопки должны иметь pointer cursor */
+button,
+.btn,
+.toggle-btn,
+.header-btn,
+.action-btn,
+.profile-action-btn,
+.close-btn,
+.add-profile-btn,
+.profile-card {
+    cursor: pointer !important;
+}
+
+/* Разрешаем выделение только для полей ввода */
+input,
+textarea,
+select {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
 }

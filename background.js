@@ -5,15 +5,21 @@ let proxyState = {
     isActive: false,
 }
 
+// Кеш геолокации
+let geoCache = new Map()
+
 // Инициализация расширения
-chrome.runtime.onInstalled.addListener(() => {
-    console.log('Chrome Proxy Manager установлен')
+chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === 'install') {
+        console.log('Chrome Proxy Manager установлен')
+    } else if (details.reason === 'update') {
+        console.log('Chrome Proxy Manager обновлен с версии:', details.previousVersion)
+    }
     initializeExtension()
     setupSidePanel()
 })
 
 chrome.runtime.onStartup.addListener(() => {
-    console.log('Chrome Proxy Manager запущен')
     initializeExtension()
 })
 
@@ -24,29 +30,27 @@ function setupSidePanel() {
             openPanelOnActionClick: false,
         })
         .catch((err) => {
-            console.log('Ошибка настройки боковой панели:', err)
+            console.error('Ошибка настройки боковой панели:', err)
         })
 }
 
 // Инициализация расширения
 async function initializeExtension() {
     try {
-        console.log('Инициализация расширения...')
-
         // Загружаем сохраненные данные
-        const result = await chrome.storage.local.get(['activeProfile', 'activeProfileId'])
-        console.log('Загруженные данные:', result)
-
+        const result = await chrome.storage.local.get(['activeProfile', 'activeProfileId', 'geoCache'])
+        
+        // Восстанавливаем кеш геолокации
+        if (result.geoCache) {
+            geoCache = new Map(Object.entries(result.geoCache))
+        }
+        
         // Проверяем текущие настройки прокси в браузере
         const config = await chrome.proxy.settings.get({})
-        console.log('Текущие настройки прокси:', config)
-
         const isProxyCurrentlyActive = config.value && config.value.mode !== 'direct' && config.value.mode !== 'system'
 
         if (result.activeProfile && result.activeProfileId) {
-            console.log('Найден активный профиль:', result.activeProfile.name)
-
-            // Восстанавливаем состояние независимо от текущих настроек браузера
+            // Восстанавливаем состояние
             proxyState.currentProxy = result.activeProfile
             proxyState.authCredentials = {
                 username: result.activeProfile.username || '',
@@ -55,22 +59,93 @@ async function initializeExtension() {
             proxyState.isActive = true
 
             if (!isProxyCurrentlyActive) {
-                console.log('Прокси не активен в браузере, восстанавливаем...')
                 await applyProxyProfile(result.activeProfile)
             } else {
-                console.log('Прокси уже активен в браузере')
                 updateBadge(true)
             }
         } else {
-            console.log('Нет активного профиля')
             proxyState.isActive = isProxyCurrentlyActive
             updateBadge(proxyState.isActive)
         }
-
-        console.log('Инициализация завершена, состояние:', proxyState)
     } catch (error) {
         console.error('Ошибка инициализации:', error)
         updateBadge(false)
+    }
+}
+
+// Определение геолокации по IP
+async function getGeoLocation(ip) {
+    // Проверяем кеш
+    if (geoCache.has(ip)) {
+        return geoCache.get(ip)
+    }
+
+    try {
+        // Используем бесплатный API для определения геолокации
+        const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,city,timezone`)
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`)
+        }
+
+        const data = await response.json()
+        
+        if (data.status === 'success') {
+            const geoInfo = {
+                country: data.country || 'Неизвестно',
+                countryCode: data.countryCode ? data.countryCode.toLowerCase() : null,
+                city: data.city || null,
+                timezone: data.timezone || null,
+                lastUpdated: Date.now()
+            }
+            
+            // Сохраняем в кеш
+            geoCache.set(ip, geoInfo)
+            
+            // Сохраняем кеш в storage (с ограничением размера)
+            if (geoCache.size > 100) {
+                // Удаляем старые записи
+                const entries = Array.from(geoCache.entries())
+                entries.sort((a, b) => (a[1].lastUpdated || 0) - (b[1].lastUpdated || 0))
+                
+                // Оставляем только 50 самых новых записей
+                geoCache.clear()
+                entries.slice(-50).forEach(([key, value]) => {
+                    geoCache.set(key, value)
+                })
+            }
+            
+            // Сохраняем обновленный кеш
+            await saveGeoCache()
+            
+            return geoInfo
+        } else {
+            throw new Error('API вернул ошибку')
+        }
+    } catch (error) {
+        console.error('Ошибка определения геолокации:', error)
+        
+        // Возвращаем значение по умолчанию
+        const defaultGeo = {
+            country: 'Неизвестно',
+            countryCode: null,
+            city: null,
+            timezone: null,
+            lastUpdated: Date.now()
+        }
+        
+        geoCache.set(ip, defaultGeo)
+        return defaultGeo
+    }
+}
+
+// Сохранение кеша геолокации
+async function saveGeoCache() {
+    try {
+        const cacheObject = Object.fromEntries(geoCache)
+        await chrome.storage.local.set({ geoCache: cacheObject })
+    } catch (error) {
+        console.error('Ошибка сохранения кеша геолокации:', error)
     }
 }
 
@@ -130,15 +205,11 @@ async function applyProxyProfile(profile) {
             activeProfileId: profile.id,
         })
 
-        console.log('Прокси активирован:', profile.name)
         return { success: true }
     } catch (error) {
         console.error('Ошибка применения прокси:', error)
         updateBadge(false)
-
-        // Отправляем ошибку в popup
         notifyError(error.message)
-
         return { success: false, error: error.message }
     }
 }
@@ -157,7 +228,6 @@ async function disableProxy() {
         // Очищаем сохраненные данные
         await chrome.storage.local.remove(['activeProfile', 'activeProfileId'])
 
-        console.log('Прокси отключен')
         return { success: true }
     } catch (error) {
         console.error('Ошибка отключения прокси:', error)
@@ -168,7 +238,6 @@ async function disableProxy() {
 
 // Получение текущего статуса
 function getStatus() {
-    console.log('Запрос статуса, текущее состояние:', proxyState)
     return {
         isActive: proxyState.isActive,
         currentProfile: proxyState.currentProxy,
@@ -188,7 +257,6 @@ async function openSidePanel(windowId) {
 
 // Уведомление об ошибке
 function notifyError(errorMessage) {
-    // Отправляем сообщение всем активным popup/sidepanel
     chrome.runtime
         .sendMessage({
             action: 'proxyError',
@@ -201,55 +269,54 @@ function notifyError(errorMessage) {
 
 // Обработка аутентификации
 chrome.webRequest.onAuthRequired.addListener(
-    (details, callback) => {
-        console.log('Запрос аутентификации для:', details.url)
-
+    (details) => {
         if (proxyState.authCredentials && proxyState.authCredentials.username && proxyState.authCredentials.password) {
-            console.log('Предоставляем учетные данные для аутентификации')
-            callback({
+            return {
                 authCredentials: {
                     username: proxyState.authCredentials.username,
                     password: proxyState.authCredentials.password,
                 },
-            })
+            }
         } else {
-            console.log('Нет учетных данных для аутентификации')
-            callback({ cancel: true })
+            return { cancel: true }
         }
     },
     { urls: ['<all_urls>'] },
-    ['asyncBlocking']
+    ['blocking']
 )
 
 // Обработка сообщений от popup/sidepanel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('Получено сообщение:', request.action)
-
     switch (request.action) {
         case 'applyProxy':
             applyProxyProfile(request.profile)
                 .then((result) => sendResponse(result))
                 .catch((error) => sendResponse({ success: false, error: error.message }))
-            return true // Асинхронный ответ
+            return true
 
         case 'disableProxy':
             disableProxy()
                 .then((result) => sendResponse(result))
                 .catch((error) => sendResponse({ success: false, error: error.message }))
-            return true // Асинхронный ответ
+            return true
 
         case 'getStatus':
             sendResponse(getStatus())
             break
 
+        case 'getGeoLocation':
+            getGeoLocation(request.ip)
+                .then((result) => sendResponse({ success: true, data: result }))
+                .catch((error) => sendResponse({ success: false, error: error.message }))
+            return true
+
         case 'openSidePanel':
             openSidePanel(request.windowId)
                 .then((result) => sendResponse(result))
                 .catch((error) => sendResponse({ success: false, error: error.message }))
-            return true // Асинхронный ответ
+            return true
 
         default:
-            console.warn('Неизвестное действие:', request.action)
             sendResponse({ success: false, error: 'Неизвестное действие' })
     }
 })
@@ -259,62 +326,29 @@ chrome.proxy.onProxyError.addListener((details) => {
     console.error('Ошибка прокси:', details)
 
     if (details.fatal) {
-        console.log('Критическая ошибка прокси, отключаем')
         proxyState.isActive = false
         updateBadge(false)
-
         notifyError(details.error || 'Критическая ошибка прокси-сервера')
     }
 })
 
 // Отслеживание изменений настроек прокси
 chrome.proxy.settings.onChange.addListener((details) => {
-    console.log('Изменение настроек прокси:', details)
-
     const isProxyActive = details.value && details.value.mode !== 'direct' && details.value.mode !== 'system'
 
     // Если прокси был отключен извне, обновляем состояние
     if (!isProxyActive && proxyState.currentProxy) {
-        console.log('Прокси отключен извне, обновляем состояние')
         proxyState.currentProxy = null
         proxyState.authCredentials = null
         proxyState.isActive = false
         updateBadge(false)
 
-        // Очищаем сохраненные данные
         chrome.storage.local
             .remove(['activeProfile', 'activeProfileId'])
-            .then(() => console.log('Данные активного профиля очищены'))
             .catch((err) => console.error('Ошибка очистки данных:', err))
     } else if (isProxyActive && !proxyState.currentProxy) {
-        // Прокси включен извне, но у нас нет информации о профиле
-        console.log('Прокси включен извне')
+        // Прокси включен извне
         proxyState.isActive = true
         updateBadge(true)
     }
 })
-
-// Обработка установки/обновления расширения
-chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install') {
-        console.log('Расширение установлено впервые')
-        // Можно показать welcome страницу или инструкции
-    } else if (details.reason === 'update') {
-        console.log('Расширение обновлено с версии:', details.previousVersion)
-        // Можно выполнить миграцию данных если нужно
-    }
-})
-
-// Обработка приостановки/возобновления расширения
-chrome.runtime.onSuspend.addListener(() => {
-    console.log('Расширение приостанавливается')
-    // Сохраняем критически важные данные
-})
-
-// Обработка неожиданного завершения
-chrome.runtime.onSuspendCanceled.addListener(() => {
-    console.log('Приостановка расширения отменена')
-})
-
-// Инициализация при загрузке
-console.log('Background script загружен')
