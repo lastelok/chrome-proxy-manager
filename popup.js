@@ -118,20 +118,24 @@ function showDebugInfo() {
                 message += `\n🔑 АКТИВНЫЕ УЧЕТНЫЕ ДАННЫЕ: НЕ ЗАДАНЫ\n`
             }
             
-            if (debug.pendingAuthCredentials) {
-                message += `\n⏳ ОЖИДАЮЩИЕ УЧЕТНЫЕ ДАННЫЕ:\n`
-                message += `👤 Логин: ${debug.pendingAuthCredentials.username || 'НЕ ЗАДАН'}\n`
-                message += `🔐 Пароль: ${debug.pendingAuthCredentials.password ? 'ЗАДАН' : 'НЕ ЗАДАН'}\n`
+            if (debug.authAttempts && Object.keys(debug.authAttempts).length > 0) {
+                message += `\n🔢 ПОПЫТКИ АВТОРИЗАЦИИ:\n`
+                for (const [proxy, attempts] of Object.entries(debug.authAttempts)) {
+                    message += `${proxy}: ${attempts} попыток\n`
+                }
             }
             
             message += `\n🆘 ЕСЛИ АВТОРИЗАЦИЯ НЕ РАБОТАЕТ:\n`
-            message += `1. Проверьте правильность логина и пароля\n`
-            message += `2. Перезагрузите расширение (chrome://extensions/)\n`
-            message += `3. Откройте DevTools (F12) и проверьте логи\n`
+            message += `1. Нажмите кнопку "Сбросить авторизацию" ниже\n`
+            message += `2. Проверьте правильность логина и пароля\n`
+            message += `3. Перезагрузите расширение (chrome://extensions/)\n`
             message += `4. Попробуйте отключить и снова включить прокси\n\n`
             message += `💡 Попробуйте открыть httpbin.org/ip для проверки`
             
-            showConfirmDialog(message)
+            showConfirmDialog(message, () => {
+                // Сбрасываем счетчик попыток авторизации
+                resetAuthAttempts()
+            }, 'Сбросить авторизацию')
         } else {
             showConfirmDialog('❌ Ошибка получения отладочной информации')
         }
@@ -429,6 +433,18 @@ async function loadGeolocationForElement(element, ip) {
         console.error('Ошибка загрузки геолокации:', error)
         geoInfoElement.innerHTML = '<span class="country-name">Неизвестно</span>'
     }
+}
+
+// Сброс счетчика попыток авторизации
+function resetAuthAttempts() {
+    chrome.runtime.sendMessage({ action: 'resetAuth' }, (response) => {
+        if (response?.success) {
+            showToast('Счетчик попыток авторизации сброшен')
+            console.log('✅ Счетчик попыток авторизации сброшен')
+        } else {
+            showToast('Ошибка сброса счетчика', 'error')
+        }
+    })
 }
 
 // Активация профиля
@@ -928,7 +944,7 @@ function openInSidePanel() {
 }
 
 // Модальное окно подтверждения
-function showConfirmDialog(message, callback = null) {
+function showConfirmDialog(message, callback = null, yesText = 'Да') {
     elements.confirmMessage.textContent = message
     state.confirmCallback = callback
     elements.confirmModal.classList.remove('hidden')
@@ -936,7 +952,7 @@ function showConfirmDialog(message, callback = null) {
     if (callback) {
         elements.confirmYes.style.display = 'inline-flex'
         elements.confirmNo.textContent = 'Нет'
-        elements.confirmYes.textContent = 'Да'
+        elements.confirmYes.textContent = yesText
     } else {
         elements.confirmYes.style.display = 'inline-flex'
         elements.confirmNo.style.display = 'none'

@@ -8,9 +8,6 @@ let proxyState = {
 // Кеш геолокации
 let geoCache = new Map()
 
-// Хранилище для последних учетных данных
-let pendingAuthCredentials = null
-
 // Инициализация расширения
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
@@ -61,9 +58,6 @@ async function initializeExtension() {
             }
             proxyState.isActive = true
             
-            // Устанавливаем учетные данные для ожидающих запросов
-            pendingAuthCredentials = proxyState.authCredentials
-
             console.log('🔄 Восстановлены учетные данные из сохраненного профиля:', {
                 username: proxyState.authCredentials.username || 'НЕ УКАЗАН',
                 password: proxyState.authCredentials.password ? '***' : 'НЕ УКАЗАН',
@@ -184,24 +178,13 @@ async function applyProxyProfile(profile) {
 
         console.log('🔄 Применяем профиль прокси:', profile.name)
 
-        // ВАЖНО: Устанавливаем учетные данные ДО применения прокси
-        if (profile.username && profile.password) {
-            pendingAuthCredentials = {
-                username: profile.username,
-                password: profile.password,
-            }
-            console.log('🔐 Предустановлены учетные данные для немедленной авторизации')
-        } else {
-            pendingAuthCredentials = null
-        }
-
         // Очищаем любые предыдущие настройки прокси
         await chrome.proxy.settings.clear({})
 
         // Небольшая задержка для очистки
         await new Promise(resolve => setTimeout(resolve, 100))
 
-        // Устанавливаем учетные данные в состояние
+        // ВАЖНО: Устанавливаем учетные данные ДО применения прокси
         proxyState.authCredentials = {
             username: profile.username || '',
             password: profile.password || '',
@@ -215,7 +198,7 @@ async function applyProxyProfile(profile) {
             profileName: profile.name
         })
 
-        // Конфигурация прокси - используем фиксированные серверы для всех типов прокси
+        // Конфигурация прокси
         const proxyConfig = {
             mode: 'fixed_servers',
             rules: {
@@ -253,8 +236,6 @@ async function applyProxyProfile(profile) {
         return { success: true }
     } catch (error) {
         console.error('❌ Ошибка применения прокси:', error)
-        // Сбрасываем ожидающие учетные данные при ошибке
-        pendingAuthCredentials = null
         notifyError(error.message)
         return { success: false, error: error.message }
     }
@@ -269,7 +250,6 @@ async function disableProxy() {
         proxyState.currentProxy = null
         proxyState.authCredentials = null
         proxyState.isActive = false
-        pendingAuthCredentials = null
         updateBadge(false)
 
         // Очищаем сохраненные данные
@@ -284,10 +264,10 @@ async function disableProxy() {
     }
 }
 
-// Счетчик попыток авторизации для предотвращения зацикливания
+// Счетчик попыток авторизации для каждого уникального прокси
 let authAttempts = new Map()
 
-// Улучшенный обработчик аутентификации прокси
+// Упрощенный и надежный обработчик аутентификации прокси
 chrome.webRequest.onAuthRequired.addListener(
     (details) => {
         console.log('🔑 Запрос аутентификации!')
@@ -304,47 +284,49 @@ chrome.webRequest.onAuthRequired.addListener(
             return { cancel: false }
         }
         
-        // Проверяем количество попыток для этого запроса
-        const attemptKey = `${details.requestId}_${details.url}`
-        const attempts = authAttempts.get(attemptKey) || 0
+        // Создаем уникальный ключ для прокси-сервера
+        const proxyKey = `${details.challenger?.host || 'unknown'}:${details.challenger?.port || 'unknown'}`
+        const attempts = authAttempts.get(proxyKey) || 0
         
-        if (attempts >= 2) {
-            console.log('❌ Превышено количество попыток авторизации для запроса')
-            authAttempts.delete(attemptKey)
+        // Ограничиваем количество попыток для конкретного прокси-сервера
+        if (attempts >= 3) {
+            console.log('❌ Превышено количество попыток авторизации для прокси:', proxyKey)
             return { cancel: true }
         }
         
-        // Сначала проверяем ожидающие учетные данные
-        let credentials = pendingAuthCredentials || proxyState.authCredentials
-        
         // Проверяем наличие учетных данных
-        if (credentials && credentials.username && credentials.password) {
+        if (proxyState.authCredentials && proxyState.authCredentials.username && proxyState.authCredentials.password) {
             console.log('✅ Предоставляем учетные данные для прокси:')
-            console.log('👤 Username:', credentials.username)
+            console.log('👤 Username:', proxyState.authCredentials.username)
             console.log('🔐 Password: ***')
             console.log('📋 Профиль:', proxyState.currentProxy?.name || 'Неизвестно')
+            console.log('🌐 Прокси-сервер:', proxyKey)
             console.log('⏱️ Попытка:', attempts + 1)
             
-            // Увеличиваем счетчик попыток
-            authAttempts.set(attemptKey, attempts + 1)
+            // Увеличиваем счетчик попыток для этого прокси
+            authAttempts.set(proxyKey, attempts + 1)
             
-            // Очищаем счетчик через 5 секунд
+            // Очищаем счетчик через 30 секунд для успешных подключений
             setTimeout(() => {
-                authAttempts.delete(attemptKey)
-            }, 5000)
+                if (authAttempts.get(proxyKey) <= 3) {
+                    authAttempts.delete(proxyKey)
+                    console.log('🧹 Очищен счетчик попыток для прокси:', proxyKey)
+                }
+            }, 30000)
             
             return {
                 authCredentials: {
-                    username: credentials.username,
-                    password: credentials.password
+                    username: proxyState.authCredentials.username,
+                    password: proxyState.authCredentials.password
                 }
             }
         }
         
         console.log('❌ Нет сохраненных учетных данных для прокси')
         console.log('📊 Текущие учетные данные:', {
-            pending: pendingAuthCredentials,
-            current: proxyState.authCredentials,
+            hasCredentials: !!proxyState.authCredentials,
+            hasUsername: !!(proxyState.authCredentials?.username),
+            hasPassword: !!(proxyState.authCredentials?.password),
             profile: proxyState.currentProxy?.name || 'Нет активного профиля'
         })
         
@@ -357,13 +339,19 @@ chrome.webRequest.onAuthRequired.addListener(
     ['blocking']
 )
 
-// Очистка старых записей счетчика попыток каждые 30 секунд
+// Очистка старых записей счетчика попыток каждую минуту
 setInterval(() => {
     if (authAttempts.size > 0) {
-        console.log('🧹 Очистка счетчика попыток авторизации')
-        authAttempts.clear()
+        console.log('🧹 Очистка счетчика попыток авторизации, размер:', authAttempts.size)
+        // Удаляем записи старше 5 минут
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
+        for (const [key, attempts] of authAttempts.entries()) {
+            if (attempts >= 3) {
+                authAttempts.delete(key)
+            }
+        }
     }
-}, 30000)
+}, 60000)
 
 // Дополнительный обработчик для отслеживания всех запросов
 chrome.webRequest.onBeforeRequest.addListener(
@@ -407,16 +395,25 @@ function notifyError(errorMessage) {
         })
 }
 
+// Функция для принудительной очистки счетчика попыток
+function resetAuthAttempts() {
+    authAttempts.clear()
+    console.log('🔄 Счетчик попыток авторизации принудительно очищен')
+}
+
 // Обработка сообщений от popup/sidepanel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.action) {
         case 'applyProxy':
+            // Очищаем счетчик попыток при переключении профиля
+            resetAuthAttempts()
             applyProxyProfile(request.profile)
                 .then((result) => sendResponse(result))
                 .catch((error) => sendResponse({ success: false, error: error.message }))
             return true
 
         case 'disableProxy':
+            resetAuthAttempts()
             disableProxy()
                 .then((result) => sendResponse(result))
                 .catch((error) => sendResponse({ success: false, error: error.message }))
@@ -438,6 +435,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 .catch((error) => sendResponse({ success: false, error: error.message }))
             return true
 
+        case 'resetAuth':
+            resetAuthAttempts()
+            sendResponse({ success: true, message: 'Счетчик попыток авторизации сброшен' })
+            break
+
         case 'debugAuth':
             console.log('🔍 === ОТЛАДОЧНАЯ ИНФОРМАЦИЯ ===')
             console.log('🔀 Активен ли прокси:', proxyState.isActive)
@@ -447,10 +449,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 password: proxyState.authCredentials?.password ? 'ЗАДАН' : 'НЕ ЗАДАН',
                 fullObject: proxyState.authCredentials
             })
-            console.log('⏳ Ожидающие учетные данные:', {
-                username: pendingAuthCredentials?.username || 'НЕ ЗАДАН',
-                password: pendingAuthCredentials?.password ? 'ЗАДАН' : 'НЕ ЗАДАН',
-            })
+            console.log('🔢 Попытки авторизации:', Object.fromEntries(authAttempts))
             console.log('================================')
             
             sendResponse({ 
@@ -459,7 +458,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     isActive: proxyState.isActive,
                     currentProfile: proxyState.currentProxy,
                     authCredentials: proxyState.authCredentials,
-                    pendingAuthCredentials: pendingAuthCredentials
+                    authAttempts: Object.fromEntries(authAttempts)
                 }
             })
             break
@@ -469,9 +468,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 })
 
-// Обработка ошибок прокси - исправленная версия
+// Обработка ошибок прокси
 chrome.proxy.onProxyError.addListener((details) => {
-    // Правильно выводим детали ошибки
     console.error('💥 Ошибка прокси:', {
         error: details.error,
         details: details.details,
@@ -479,11 +477,8 @@ chrome.proxy.onProxyError.addListener((details) => {
     })
 
     if (details.fatal) {
-        // НЕ сбрасываем состояние автоматически при ошибке
-        // Пользователь должен сам решить, что делать
         notifyError(details.error || 'Критическая ошибка прокси-сервера')
         
-        // Добавляем специальное сообщение об ошибке подключения
         chrome.runtime
             .sendMessage({
                 action: 'proxyConnectionError',
@@ -508,7 +503,7 @@ chrome.proxy.settings.onChange.addListener((details) => {
         proxyState.currentProxy = null
         proxyState.authCredentials = null
         proxyState.isActive = false
-        pendingAuthCredentials = null
+        resetAuthAttempts()
         updateBadge(false)
 
         chrome.storage.local
@@ -522,17 +517,23 @@ chrome.proxy.settings.onChange.addListener((details) => {
     }
 })
 
-// Обработчик завершенных запросов для сброса ожидающих учетных данных
+// Обработчик успешных запросов для сброса счетчика ошибок
 chrome.webRequest.onCompleted.addListener(
     (details) => {
-        if (details.type === 'main_frame' && pendingAuthCredentials) {
-            // Сбрасываем ожидающие учетные данные после успешной загрузки страницы
-            console.log('✅ Запрос успешно завершен, сбрасываем временные учетные данные')
-            pendingAuthCredentials = null
+        if (details.type === 'main_frame' && proxyState.isActive && details.statusCode === 200) {
+            // При успешном запросе через прокси сбрасываем счетчик ошибок для данного прокси
+            if (proxyState.currentProxy) {
+                const proxyKey = `${proxyState.currentProxy.host}:${proxyState.currentProxy.port}`
+                if (authAttempts.has(proxyKey)) {
+                    authAttempts.delete(proxyKey)
+                    console.log('✅ Успешный запрос, сброшен счетчик ошибок для:', proxyKey)
+                }
+            }
         }
     },
     { urls: ['<all_urls>'] }
 )
 
-console.log('🚀 Chrome Proxy Manager инициализирован с улучшенной поддержкой аутентификации')
+console.log('🚀 Chrome Proxy Manager инициализирован с улучшенной системой аутентификации')
 console.log('🔐 Система автоматически предоставляет учетные данные без показа диалога')
+console.log('🔄 Добавлена автоматическая очистка счетчика попыток при переключении профилей')
