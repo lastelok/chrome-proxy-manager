@@ -574,6 +574,23 @@ function hideImportForm() {
     elements.importText.value = ''
 }
 
+// Генерация уникального имени профиля для импорта
+function generateUniqueImportName(baseName, counter) {
+    const existingNames = state.profiles.map(p => p.name.toLowerCase())
+    let name = baseName
+    
+    if (counter > 1) {
+        name = `${baseName} ${counter}`
+    }
+    
+    // Если имя уже существует, увеличиваем счетчик
+    if (existingNames.includes(name.toLowerCase())) {
+        return generateUniqueImportName(baseName, counter + 1)
+    }
+    
+    return name
+}
+
 // Парсинг строки прокси
 function parseProxyLine(line) {
     line = line.trim()
@@ -582,11 +599,14 @@ function parseProxyLine(line) {
     let customName = null
     let proxyType = 'http'
 
-    // Проверка на имя профиля
-    const nameMatch = line.match(/^([^:]+):\s+(.+)$/)
-    if (nameMatch) {
-        customName = nameMatch[1].trim()
-        line = nameMatch[2].trim()
+    // Проверка на имя профиля (формат: Название;остальная_часть)
+    // Точка с запятой указывает на наличие пользовательского названия
+    if (line.includes(';')) {
+        const nameMatch = line.match(/^([^;]+);(.+)$/)
+        if (nameMatch) {
+            customName = nameMatch[1].trim()
+            line = nameMatch[2].trim()
+        }
     }
 
     // Проверка типа прокси
@@ -598,12 +618,12 @@ function parseProxyLine(line) {
 
     let result = null
 
-    // user:pass@host:port
-    const authFormat1 = line.match(/^([^:@]+):([^:@]+)@([^:@]+):(\d+)$/)
+    // user:pass@host:port - улучшенная версия
+    const authFormat1 = line.match(/^([^:@\s]+):([^@\s]+)@([^:\s]+):(\d+)$/)
     if (authFormat1) {
         result = {
             username: authFormat1[1],
-            password: authFormat1[2],
+            password: authFormat1[2], 
             host: authFormat1[3],
             port: authFormat1[4],
             type: proxyType,
@@ -612,7 +632,7 @@ function parseProxyLine(line) {
 
     // host:port:user:pass
     if (!result) {
-        const authFormat2 = line.match(/^([^:]+):(\d+):([^:]+):(.+)$/)
+        const authFormat2 = line.match(/^([^:\s]+):(\d+):([^:\s]+):(.+)$/)
         if (authFormat2) {
             result = {
                 host: authFormat2[1],
@@ -626,7 +646,7 @@ function parseProxyLine(line) {
 
     // host:port
     if (!result) {
-        const simpleFormat = line.match(/^([^:]+):(\d+)$/)
+        const simpleFormat = line.match(/^([^:\s]+):(\d+)$/)
         if (simpleFormat) {
             result = {
                 host: simpleFormat[1],
@@ -657,6 +677,8 @@ async function processImport() {
     let imported = 0
     let skipped = 0
     let firstProfileId = null
+    let importCounter = 1
+    let errors = []
 
     for (let index = 0; index < lines.length; index++) {
         const line = lines[index]
@@ -673,8 +695,17 @@ async function processImport() {
                 continue
             }
 
+            // Генерируем уникальное имя для профиля
+            let profileName
+            if (parsed.customName) {
+                profileName = generateUniqueImportName(parsed.customName, 1)
+            } else {
+                profileName = generateUniqueImportName('Импорт', importCounter)
+                importCounter++
+            }
+
             const newProfile = {
-                name: parsed.customName || `Импорт ${imported + 1}`,
+                name: profileName,
                 type: parsed.type,
                 host: parsed.host,
                 port: parsed.port,
@@ -691,6 +722,8 @@ async function processImport() {
 
             imported++
         } else if (line.trim()) {
+            // Добавляем строку в ошибки для отладки
+            errors.push(`Строка ${index + 1}: "${line.trim()}"`)
             skipped++
         }
     }
@@ -712,7 +745,16 @@ async function processImport() {
             }
         })
     } else {
-        showConfirmDialog('Не удалось импортировать ни одного профиля. Проверьте формат данных.')
+        let errorMessage = 'Не удалось импортировать ни одного профиля. Проверьте формат данных.'
+        
+        if (errors.length > 0) {
+            errorMessage += '\n\nНераспознанные строки:\n' + errors.slice(0, 5).join('\n')
+            if (errors.length > 5) {
+                errorMessage += `\n... и ещё ${errors.length - 5} строк`
+            }
+        }
+        
+        showConfirmDialog(errorMessage)
     }
 }
 
@@ -725,7 +767,7 @@ function exportProfiles() {
 
     let exportText = ''
     state.profiles.forEach((profile) => {
-        let line = `${profile.name}: `
+        let line = `${profile.name};`
 
         if (profile.type && profile.type !== 'http') {
             line += `${profile.type.toUpperCase()} `
