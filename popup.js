@@ -88,26 +88,6 @@ async function getCountryInfo(ip) {
     }
 
     try {
-        // Используем ipapi.co для более стабильного API
-        const response = await fetch(`https://ipapi.co/${ip}/json/`)
-        if (response.ok) {
-            const data = await response.json()
-            if (data.country_code && data.country_name) {
-                const result = {
-                    country: data.country_code,
-                    countryName: data.country_name,
-                    flag: getCountryFlag(data.country_code),
-                }
-                state.geoCache[ip] = result
-                await saveProfiles()
-                return result
-            }
-        }
-    } catch (error) {
-        console.log('Ошибка ipapi.co:', error)
-    }
-
-    try {
         // Fallback к ipinfo.io
         const response2 = await fetch(`https://ipinfo.io/${ip}/json`)
         if (response2.ok) {
@@ -116,7 +96,7 @@ async function getCountryInfo(ip) {
                 const result = {
                     country: data2.country,
                     countryName: getCountryName(data2.country),
-                    flag: getCountryFlag(data2.country),
+                    flagUrl: getFlagUrl(data2.country),
                 }
                 state.geoCache[ip] = result
                 await saveProfiles()
@@ -127,7 +107,15 @@ async function getCountryInfo(ip) {
         console.log('Ошибка ipinfo.io:', error2)
     }
 
-    return { country: 'UN', countryName: 'Неизвестно', flag: '🌍' }
+    return { country: 'UN', countryName: 'Неизвестно', flagUrl: getFlagUrl('UN') }
+}
+
+// Получение URL флага по коду страны
+function getFlagUrl(countryCode) {
+    if (!countryCode || countryCode.length !== 2) {
+        return 'https://flagcdn.com/w20/un.png' // Флаг ООН для неизвестных стран
+    }
+    return `https://flagcdn.com/w20/${countryCode.toLowerCase()}.png`
 }
 
 // База названий стран
@@ -386,21 +374,6 @@ function getCountryName(countryCode) {
     return countries[countryCode] || countryCode
 }
 
-// Получение флага по коду страны (исправленная версия)
-function getCountryFlag(countryCode) {
-    if (!countryCode || countryCode.length !== 2) return '🌍'
-
-    try {
-        const code = countryCode.toUpperCase()
-        // Конвертируем ISO код в эмодзи флага
-        const codePoints = code.split('').map((char) => 0x1f1e6 - 65 + char.charCodeAt(0))
-        return String.fromCodePoint(...codePoints)
-    } catch (error) {
-        console.log('Ошибка создания флага для', countryCode, error)
-        return '🌍'
-    }
-}
-
 // Улучшенная проверка пинга прокси
 async function checkProxyPing(host, port) {
     const key = `${host}:${port}`
@@ -504,7 +477,7 @@ async function renderProfiles() {
         return
     }
 
-    // Рендерим профили с новой структурой
+    // Рендерим профили с изображениями флагов
     elements.profilesList.innerHTML = state.profiles
         .map(
             (profile) => `
@@ -512,7 +485,9 @@ async function renderProfiles() {
              data-id="${profile.id}">
             <div class="profile-info">
                 <div class="profile-name">
-                    <span class="country-flag" data-ip="${profile.host}">🌍</span>
+                    <img class="country-flag" data-ip="${
+                        profile.host
+                    }" src="https://flagcdn.com/w20/un.png" alt="?" onerror="this.style.display='none'">
                     ${escapeHtml(profile.name)}
                 </div>
                 <div class="profile-details">
@@ -538,10 +513,12 @@ async function renderProfiles() {
         // Загружаем геолокацию и устанавливаем флаг
         try {
             const geoInfo = await getCountryInfo(profile.host)
-            const flagElement = document.querySelector(`[data-ip="${profile.host}"]`)
-            if (flagElement && geoInfo.flag) {
-                flagElement.textContent = geoInfo.flag
+            const flagElement = document.querySelector(`img[data-ip="${profile.host}"]`)
+            if (flagElement && geoInfo.flagUrl) {
+                flagElement.src = geoInfo.flagUrl
+                flagElement.alt = geoInfo.country
                 flagElement.title = `${geoInfo.countryName} (${geoInfo.country})`
+                flagElement.style.display = 'block'
             }
         } catch (error) {
             console.log('Ошибка загрузки геолокации для', profile.host, error)
