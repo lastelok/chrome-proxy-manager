@@ -10,8 +10,11 @@
         <div class="container">
             <!-- Заголовок -->
             <header class="header">
-                <h1>🌐 Proxy Manager</h1>
-                <button id="toggleBtn" class="toggle-btn">●</button>
+                <div class="header-info">
+                    <h1>🌐 Proxy Manager</h1>
+                    <span id="version" class="version"></span>
+                </div>
+                <button id="toggleBtn" class="toggle-btn hidden">●</button>
             </header>
 
             <!-- Статус -->
@@ -23,7 +26,10 @@
             <div class="profiles">
                 <div class="section-header">
                     <span>Профили</span>
-                    <button id="addBtn" class="add-btn">+</button>
+                    <div class="header-actions">
+                        <button id="importBtn" class="import-btn" title="Импорт">⬇</button>
+                        <button id="addBtn" class="add-btn">+</button>
+                    </div>
                 </div>
                 <div id="profilesList" class="profiles-list"></div>
             </div>
@@ -33,31 +39,32 @@
                 <div class="modal-content">
                     <h3 id="modalTitle">Новый профиль</h3>
                     <form id="profileForm">
-                        <input type="hidden" id="editId" />
-
-                        <div class="form-group">
-                            <label for="name">Название:</label>
-                            <input type="text" id="name" required />
-                        </div>
+                        <input type="hidden" id="editId" name="editId" />
 
                         <div class="form-row">
                             <div class="form-group">
+                                <label for="name">Название:</label>
+                                <input type="text" id="name" name="name" required />
+                            </div>
+                            <div class="form-group">
                                 <label for="type">Тип:</label>
-                                <select id="type">
+                                <select id="type" name="type">
                                     <option value="http">HTTP</option>
                                     <option value="socks4">SOCKS4</option>
                                     <option value="socks5">SOCKS5</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label for="port">Порт:</label>
-                                <input type="number" id="port" min="1" max="65535" required />
-                            </div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="host">IP адрес:</label>
-                            <input type="text" id="host" required />
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="host">IP адрес:</label>
+                                <input type="text" id="host" name="host" required />
+                            </div>
+                            <div class="form-group">
+                                <label for="port">Порт:</label>
+                                <input type="number" id="port" name="port" min="1" max="65535" required />
+                            </div>
                         </div>
 
                         <div class="auth-section">
@@ -66,11 +73,13 @@
                             <div id="authFields" class="auth-fields hidden">
                                 <div class="form-group">
                                     <label for="username">Логин:</label>
-                                    <input type="text" id="username" />
+                                    <input type="text" id="username" name="username" />
                                 </div>
                                 <div class="form-group">
                                     <label for="password">Пароль:</label>
-                                    <input type="password" id="password" />
+                                    <div class="password-field">
+                                        <input type="text" id="password" name="password" />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -80,6 +89,27 @@
                             <button type="submit">Сохранить</button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <!-- Модальное окно импорта -->
+            <div id="importModal" class="modal hidden">
+                <div class="modal-content">
+                    <h3>Импорт прокси</h3>
+                    <div class="form-group">
+                        <label for="importText">Вставьте прокси (по одному на строку):</label>
+                        <textarea id="importText" rows="8" placeholder="user:pass@ip:port&#10;ip:port:user:pass&#10;ip:port"></textarea>
+                        <small
+                            >Поддерживаемые форматы:<br />
+                            • user:pass@ip:port<br />
+                            • ip:port:user:pass<br />
+                            • ip:port</small
+                        >
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" id="cancelImportBtn">Отмена</button>
+                        <button type="button" id="confirmImportBtn">Импорт</button>
+                    </div>
                 </div>
             </div>
         </div>

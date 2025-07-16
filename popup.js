@@ -2,12 +2,18 @@
 const elements = {
     toggleBtn: document.getElementById('toggleBtn'),
     status: document.getElementById('status'),
+    version: document.getElementById('version'),
     addBtn: document.getElementById('addBtn'),
+    importBtn: document.getElementById('importBtn'),
     profilesList: document.getElementById('profilesList'),
     modal: document.getElementById('modal'),
+    importModal: document.getElementById('importModal'),
     modalTitle: document.getElementById('modalTitle'),
     profileForm: document.getElementById('profileForm'),
     cancelBtn: document.getElementById('cancelBtn'),
+    cancelImportBtn: document.getElementById('cancelImportBtn'),
+    confirmImportBtn: document.getElementById('confirmImportBtn'),
+    importText: document.getElementById('importText'),
     useAuth: document.getElementById('useAuth'),
     authFields: document.getElementById('authFields'),
 }
@@ -23,22 +29,35 @@ let state = {
 document.addEventListener('DOMContentLoaded', init)
 
 async function init() {
+    await loadVersion()
     await loadProfiles()
     await updateStatus()
     bindEvents()
+}
+
+// Загрузка версии
+async function loadVersion() {
+    const manifest = chrome.runtime.getManifest()
+    elements.version.textContent = `v${manifest.version}`
 }
 
 // Привязка событий
 function bindEvents() {
     elements.toggleBtn.addEventListener('click', toggleProxy)
     elements.addBtn.addEventListener('click', showAddForm)
+    elements.importBtn.addEventListener('click', showImportForm)
     elements.cancelBtn.addEventListener('click', hideModal)
+    elements.cancelImportBtn.addEventListener('click', hideImportModal)
+    elements.confirmImportBtn.addEventListener('click', handleImport)
     elements.profileForm.addEventListener('submit', handleFormSubmit)
     elements.useAuth.addEventListener('change', toggleAuthFields)
 
-    // Закрытие модального окна при клике вне его
+    // Закрытие модальных окон при клике вне их
     elements.modal.addEventListener('click', (e) => {
         if (e.target === elements.modal) hideModal()
+    })
+    elements.importModal.addEventListener('click', (e) => {
+        if (e.target === elements.importModal) hideImportModal()
     })
 }
 
@@ -59,16 +78,16 @@ async function updateStatus() {
     const response = await chrome.runtime.sendMessage({ action: 'getStatus' })
 
     if (response.isActive && response.activeProfile) {
-        elements.status.textContent = `Подключен: ${response.activeProfile.name}`
+        elements.status.textContent = `Подключен: ${response.activeProfile.name} (${response.activeProfile.host})`
         elements.status.className = 'status active'
-        elements.toggleBtn.className = 'toggle-btn active'
-        elements.toggleBtn.textContent = '●'
+        elements.toggleBtn.className = 'toggle-btn'
+        elements.toggleBtn.textContent = '×'
+        elements.toggleBtn.title = 'Отключить прокси'
         state.activeProfileId = response.activeProfile.id
     } else {
         elements.status.textContent = 'Прямое подключение'
         elements.status.className = 'status'
-        elements.toggleBtn.className = 'toggle-btn'
-        elements.toggleBtn.textContent = '○'
+        elements.toggleBtn.className = 'toggle-btn hidden'
         state.activeProfileId = null
     }
 
@@ -95,7 +114,7 @@ function renderProfiles() {
             <div class="profile-info">
                 <div class="profile-name">${escapeHtml(profile.name)}</div>
                 <div class="profile-details">
-                    ${profile.type.toUpperCase()} ${profile.host}:${profile.port}
+                    ${profile.type.toUpperCase()} ${profile.host}
                     ${profile.username ? '🔐' : ''}
                 </div>
             </div>
@@ -140,35 +159,13 @@ function bindProfileEvents() {
     })
 }
 
-// Сброс авторизации
-async function resetAuth() {
-    console.log('Сброс авторизации...')
-
-    const response = await chrome.runtime.sendMessage({ action: 'resetAuth' })
-
-    if (response.success) {
-        showToast('Авторизация сброшена. Перезагрузите страницу.')
-        console.log('✅ Авторизация успешно сброшена')
-    } else {
-        showToast('Ошибка сброса: ' + response.error, true)
-        console.error('❌ Ошибка сброса авторизации:', response.error)
-    }
-}
-
 // Переключение прокси
 async function toggleProxy() {
     if (state.activeProfileId) {
         // Отключаем прокси
         await chrome.runtime.sendMessage({ action: 'disableProxy' })
-    } else if (state.profiles.length > 0) {
-        // Активируем первый профиль
-        activateProfile(state.profiles[0].id)
-    } else {
-        // Показываем форму добавления
-        showAddForm()
+        await updateStatus()
     }
-
-    await updateStatus()
 }
 
 // Активация профиля
@@ -188,7 +185,7 @@ async function activateProfile(profileId) {
         await updateStatus()
 
         if (profile.username && profile.password) {
-            showToast('Прокси подключен с авторизацией. Если появится диалог входа - нажмите 🔄')
+            showToast('Прокси подключен с авторизацией')
         } else {
             showToast('Прокси подключен')
         }
@@ -206,6 +203,119 @@ function showAddForm() {
     toggleAuthFields()
     elements.modal.classList.remove('hidden')
     document.getElementById('name').focus()
+}
+
+// Показ формы импорта
+function showImportForm() {
+    elements.importText.value = ''
+    elements.importModal.classList.remove('hidden')
+    elements.importText.focus()
+}
+
+// Скрытие формы импорта
+function hideImportModal() {
+    elements.importModal.classList.add('hidden')
+    elements.importText.value = ''
+}
+
+// Парсинг строки прокси
+function parseProxyString(line) {
+    line = line.trim()
+    if (!line) return null
+
+    // Формат: user:pass@ip:port
+    let match = line.match(/^(.+?):(.+?)@(.+?):(\d+)$/)
+    if (match) {
+        return {
+            username: match[1],
+            password: match[2],
+            host: match[3],
+            port: parseInt(match[4]),
+        }
+    }
+
+    // Формат: ip:port:user:pass
+    match = line.match(/^(.+?):(\d+):(.+?):(.+?)$/)
+    if (match) {
+        return {
+            host: match[1],
+            port: parseInt(match[2]),
+            username: match[3],
+            password: match[4],
+        }
+    }
+
+    // Формат: ip:port
+    match = line.match(/^(.+?):(\d+)$/)
+    if (match) {
+        return {
+            host: match[1],
+            port: parseInt(match[2]),
+            username: '',
+            password: '',
+        }
+    }
+
+    return null
+}
+
+// Обработка импорта
+async function handleImport() {
+    const text = elements.importText.value.trim()
+    if (!text) {
+        showToast('Введите данные для импорта', true)
+        return
+    }
+
+    const lines = text.split('\n')
+    const imported = []
+    const errors = []
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (!line) continue
+
+        const parsed = parseProxyString(line)
+        if (parsed) {
+            // Проверяем валидность порта
+            if (parsed.port < 1 || parsed.port > 65535) {
+                errors.push(`Строка ${i + 1}: неверный порт`)
+                continue
+            }
+
+            // Создаем профиль
+            const profile = {
+                id: Date.now().toString() + Math.random(),
+                name: `Импорт ${parsed.host}:${parsed.port}`,
+                type: 'http',
+                host: parsed.host,
+                port: parsed.port.toString(),
+                username: parsed.username || '',
+                password: parsed.password || '',
+            }
+
+            // Проверяем дублирование
+            const duplicate = state.profiles.find((p) => p.host === profile.host && p.port === profile.port)
+            if (!duplicate) {
+                imported.push(profile)
+            }
+        } else {
+            errors.push(`Строка ${i + 1}: неверный формат`)
+        }
+    }
+
+    if (imported.length > 0) {
+        state.profiles.push(...imported)
+        await saveProfiles()
+        renderProfiles()
+        hideImportModal()
+        showToast(`Импортировано профилей: ${imported.length}`)
+    }
+
+    if (errors.length > 0) {
+        showToast(`Ошибки: ${errors.length}`, true)
+        console.log('Ошибки импорта:', errors)
+    }
 }
 
 // Редактирование профиля
