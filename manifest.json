@@ -1,9 +1,10 @@
 {
     "manifest_version": 3,
-    "name": "Chrome Proxy Manager",
-    "version": "1.2.6",
-    "description": "Профессиональное управление прокси‑соединениями с отображением геолокации",
-    "permissions": ["proxy", "storage", "declarativeNetRequest"],
+    "name": "Simple Proxy Manager",
+    "version": "1.0.0",
+    "description": "Простое управление прокси-соединениями",
+    "minimum_chrome_version": "108",
+    "permissions": ["proxy", "storage", "declarativeNetRequest", "webRequest", "webRequestAuthProvider"],
     "host_permissions": ["<all_urls>"],
     "background": {
         "service_worker": "background.js"

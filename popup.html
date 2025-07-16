@@ -3,222 +3,83 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Chrome Proxy Manager</title>
+        <title>Simple Proxy Manager</title>
         <link rel="stylesheet" href="popup.css" />
     </head>
     <body>
-        <div class="app">
+        <div class="container">
             <!-- Заголовок -->
             <header class="header">
-                <div class="header-left">
-                    <div class="logo">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                            <path d="M2 12h20" />
-                        </svg>
-                        <span>Proxy Manager <span id="versionInfo" class="version-text"></span></span>
-                    </div>
-                </div>
-                <div class="header-right">
-                    <button id="openSidePanelBtn" class="header-btn" title="Открыть в боковой панели">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" />
-                            <line x1="15" y1="3" x2="15" y2="21" />
-                        </svg>
-                    </button>
-                </div>
+                <h1>🌐 Proxy Manager</h1>
+                <button id="toggleBtn" class="toggle-btn">●</button>
             </header>
 
-            <!-- Главный контент -->
-            <main class="main">
-                <!-- Статус подключения -->
-                <div class="status-card">
-                    <div class="status-content">
-                        <div class="status-indicator" id="statusIndicator">
-                            <div class="status-dot"></div>
-                            <div class="status-info">
-                                <div class="status-title">Проверка статуса...</div>
-                                <div class="status-subtitle">Подключение</div>
-                            </div>
-                        </div>
-                        <div class="status-actions">
-                            <button id="quickToggleBtn" class="toggle-btn" title="Переключить">
-                                <div class="toggle-icon"></div>
-                            </button>
-                        </div>
-                    </div>
+            <!-- Статус -->
+            <div id="status" class="status">
+                <span class="status-text">Проверка статуса...</span>
+            </div>
+
+            <!-- Список профилей -->
+            <div class="profiles">
+                <div class="section-header">
+                    <span>Профили</span>
+                    <button id="addBtn" class="add-btn">+</button>
                 </div>
+                <div id="profilesList" class="profiles-list"></div>
+            </div>
 
-                <!-- Профили -->
-                <div class="profiles-section">
-                    <div class="section-header">
-                        <h3>Профили <span id="profilesCount" class="count-badge">0</span></h3>
-                        <div class="action-buttons">
-                            <button id="importBtn" class="action-btn" title="Импорт">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                    <polyline points="7 10 12 15 17 10" />
-                                    <line x1="12" y1="15" x2="12" y2="3" />
-                                </svg>
-                            </button>
-                            <button id="exportBtn" class="action-btn" title="Экспорт">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                    <polyline points="17 8 12 3 7 8" />
-                                    <line x1="12" y1="3" x2="12" y2="15" />
-                                </svg>
-                            </button>
+            <!-- Форма добавления/редактирования -->
+            <div id="modal" class="modal hidden">
+                <div class="modal-content">
+                    <h3 id="modalTitle">Новый профиль</h3>
+                    <form id="profileForm">
+                        <input type="hidden" id="editId" />
+
+                        <div class="form-group">
+                            <label for="name">Название:</label>
+                            <input type="text" id="name" required />
                         </div>
-                    </div>
-
-                    <div id="profilesList" class="profiles-list"></div>
-
-                    <button id="addProfileBtn" class="add-profile-btn">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                        Добавить профиль
-                    </button>
-                </div>
-            </main>
-
-            <!-- Форма профиля -->
-            <div id="profileForm" class="modal-overlay hidden">
-                <div class="modal">
-                    <div class="modal-header">
-                        <h3 id="formTitle">Новый профиль</h3>
-                        <button id="closeFormBtn" class="close-btn">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
-                    </div>
-                    <form id="proxyForm" class="modal-body">
-                        <input type="hidden" id="profileId" />
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="profileName">Название</label>
-                                <input type="text" id="profileName" placeholder="Мой прокси" required />
-                            </div>
-                            <div class="form-group">
-                                <label for="proxyType">Тип</label>
-                                <select id="proxyType">
-                                    <option value="http">HTTP/HTTPS</option>
+                                <label for="type">Тип:</label>
+                                <select id="type">
+                                    <option value="http">HTTP</option>
                                     <option value="socks4">SOCKS4</option>
                                     <option value="socks5">SOCKS5</option>
                                 </select>
                             </div>
-                        </div>
-
-                        <div class="form-row">
                             <div class="form-group">
-                                <label for="proxyHost">IP адрес</label>
-                                <input type="text" id="proxyHost" placeholder="192.168.1.1" required />
-                            </div>
-                            <div class="form-group">
-                                <label for="proxyPort">Порт</label>
-                                <input type="number" id="proxyPort" placeholder="8080" min="1" max="65535" required />
-                            </div>
-                        </div>
-
-                        <div class="auth-section">
-                            <div class="auth-header">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="useAuth" />
-                                    <span class="checkmark"></span>
-                                    Использовать авторизацию
-                                </label>
-                            </div>
-                            <div id="authFields" class="auth-fields hidden">
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="proxyUsername">Логин</label>
-                                        <input type="text" id="proxyUsername" placeholder="username" />
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="proxyPassword">Пароль</label>
-                                        <input type="password" id="proxyPassword" placeholder="password" />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="modal-footer">
-                            <button type="button" id="cancelBtn" class="btn btn-secondary">Отмена</button>
-                            <button type="submit" class="btn btn-primary">Сохранить</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Форма импорта -->
-            <div id="importForm" class="modal-overlay hidden">
-                <div class="modal modal-large">
-                    <div class="modal-header">
-                        <h3>Импорт профилей</h3>
-                        <button id="closeImportBtn" class="close-btn">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="import-info">
-                            <h4>Поддерживаемые форматы:</h4>
-                            <div class="format-examples">
-                                <div class="format-item">
-                                    <code>user:pass@ip:port</code>
-                                    <span>С авторизацией</span>
-                                </div>
-                                <div class="format-item">
-                                    <code>ip:port:user:pass</code>
-                                    <span>Альтернативный формат</span>
-                                </div>
-                                <div class="format-item">
-                                    <code>ip:port</code>
-                                    <span>Без авторизации</span>
-                                </div>
-                                <div class="format-item">
-                                    <code>Название;любой_формат</code>
-                                    <span>С именем</span>
-                                </div>
+                                <label for="port">Порт:</label>
+                                <input type="number" id="port" min="1" max="65535" required />
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label for="importText">Вставьте список прокси (по одному в строке)</label>
-                            <textarea
-                                id="importText"
-                                placeholder="user:pass@192.168.1.1:8080&#10;192.168.1.1:8080:user:pass&#10;10.0.0.1:8080&#10;Домашний;user:pass@10.0.0.1:3128&#10;SOCKS5 192.168.1.1:1080"
-                            ></textarea>
+                            <label for="host">IP адрес:</label>
+                            <input type="text" id="host" required />
                         </div>
 
-                        <div class="modal-footer">
-                            <button type="button" id="cancelImportBtn" class="btn btn-secondary">Отмена</button>
-                            <button type="button" id="processImportBtn" class="btn btn-primary">Импортировать</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                        <div class="auth-section">
+                            <label> <input type="checkbox" id="useAuth" /> Использовать авторизацию </label>
 
-            <!-- Модальное окно подтверждения -->
-            <div id="confirmModal" class="modal-overlay hidden">
-                <div class="modal modal-small">
-                    <div class="modal-header">
-                        <h3>Подтверждение</h3>
-                    </div>
-                    <div class="modal-body">
-                        <p id="confirmMessage"></p>
-                    </div>
-                    <div class="modal-footer">
-                        <button id="confirmNo" class="btn btn-secondary">Нет</button>
-                        <button id="confirmYes" class="btn btn-primary">Да</button>
-                    </div>
+                            <div id="authFields" class="auth-fields hidden">
+                                <div class="form-group">
+                                    <label for="username">Логин:</label>
+                                    <input type="text" id="username" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="password">Пароль:</label>
+                                    <input type="password" id="password" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" id="cancelBtn">Отмена</button>
+                            <button type="submit">Сохранить</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
