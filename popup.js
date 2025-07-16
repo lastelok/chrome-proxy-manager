@@ -23,6 +23,8 @@ let state = {
     profiles: [],
     activeProfileId: null,
     editingId: null,
+    geoCache: {}, // Кэш для геолокации
+    pingCache: {}, // Кэш для пинга
 }
 
 // Инициализация
@@ -63,14 +65,388 @@ function bindEvents() {
 
 // Загрузка профилей
 async function loadProfiles() {
-    const result = await chrome.storage.local.get(['profiles'])
+    const result = await chrome.storage.local.get(['profiles', 'geoCache', 'pingCache'])
     state.profiles = result.profiles || []
+    state.geoCache = result.geoCache || {}
+    state.pingCache = result.pingCache || {}
     renderProfiles()
 }
 
 // Сохранение профилей
 async function saveProfiles() {
-    await chrome.storage.local.set({ profiles: state.profiles })
+    await chrome.storage.local.set({
+        profiles: state.profiles,
+        geoCache: state.geoCache,
+        pingCache: state.pingCache,
+    })
+}
+
+// Получение геолокации по IP
+async function getCountryInfo(ip) {
+    if (state.geoCache[ip]) {
+        return state.geoCache[ip]
+    }
+
+    try {
+        // Сначала пробуем ipinfo.io
+        const response = await fetch(`https://ipinfo.io/${ip}/json`)
+        if (response.ok) {
+            const data = await response.json()
+            const result = {
+                country: data.country || 'UN',
+                countryName: getCountryName(data.country || 'UN'),
+                flag: data.country ? getCountryFlag(data.country) : '🌍',
+            }
+            state.geoCache[ip] = result
+            await saveProfiles()
+            return result
+        }
+    } catch (error) {
+        console.log('Ошибка ipinfo.io:', error)
+    }
+
+    try {
+        // Fallback к другому сервису
+        const response2 = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`)
+        if (response2.ok) {
+            const data2 = await response2.json()
+            const result = {
+                country: data2.country_code || 'UN',
+                countryName: getCountryName(data2.country_code || 'UN'),
+                flag: data2.country_code ? getCountryFlag(data2.country_code) : '🌍',
+            }
+            state.geoCache[ip] = result
+            await saveProfiles()
+            return result
+        }
+    } catch (error2) {
+        console.log('Ошибка geojs.io:', error2)
+    }
+
+    return { country: 'UN', countryName: 'Неизвестно', flag: '🌍' }
+}
+
+// База названий стран
+function getCountryName(countryCode) {
+    const countries = {
+        AD: 'Андорра',
+        AE: 'ОАЭ',
+        AF: 'Афганистан',
+        AG: 'Антигуа и Барбуда',
+        AI: 'Ангилья',
+        AL: 'Албания',
+        AM: 'Армения',
+        AO: 'Ангола',
+        AQ: 'Антарктида',
+        AR: 'Аргентина',
+        AS: 'Американское Самоа',
+        AT: 'Австрия',
+        AU: 'Австралия',
+        AW: 'Аруба',
+        AX: 'Аландские острова',
+        AZ: 'Азербайджан',
+        BA: 'Босния и Герцеговина',
+        BB: 'Барбадос',
+        BD: 'Бангладеш',
+        BE: 'Бельгия',
+        BF: 'Буркина-Фасо',
+        BG: 'Болгария',
+        BH: 'Бахрейн',
+        BI: 'Бурунди',
+        BJ: 'Бенин',
+        BL: 'Сен-Бартелеми',
+        BM: 'Бермуды',
+        BN: 'Бруней',
+        BO: 'Боливия',
+        BQ: 'Карибские Нидерланды',
+        BR: 'Бразилия',
+        BS: 'Багамы',
+        BT: 'Бутан',
+        BV: 'Остров Буве',
+        BW: 'Ботсвана',
+        BY: 'Беларусь',
+        BZ: 'Белиз',
+        CA: 'Канада',
+        CC: 'Кокосовые острова',
+        CD: 'ДР Конго',
+        CF: 'ЦАР',
+        CG: 'Республика Конго',
+        CH: 'Швейцария',
+        CI: "Кот-д'Ивуар",
+        CK: 'Острова Кука',
+        CL: 'Чили',
+        CM: 'Камерун',
+        CN: 'Китай',
+        CO: 'Колумбия',
+        CR: 'Коста-Рика',
+        CU: 'Куба',
+        CV: 'Кабо-Верде',
+        CW: 'Кюрасао',
+        CX: 'Остров Рождества',
+        CY: 'Кипр',
+        CZ: 'Чехия',
+        DE: 'Германия',
+        DJ: 'Джибути',
+        DK: 'Дания',
+        DM: 'Доминика',
+        DO: 'Доминиканская Республика',
+        DZ: 'Алжир',
+        EC: 'Эквадор',
+        EE: 'Эстония',
+        EG: 'Египет',
+        EH: 'Западная Сахара',
+        ER: 'Эритрея',
+        ES: 'Испания',
+        ET: 'Эфиопия',
+        FI: 'Финляндия',
+        FJ: 'Фиджи',
+        FK: 'Фолклендские острова',
+        FM: 'Микронезия',
+        FO: 'Фарерские острова',
+        FR: 'Франция',
+        GA: 'Габон',
+        GB: 'Великобритания',
+        GD: 'Гренада',
+        GE: 'Грузия',
+        GF: 'Французская Гвиана',
+        GG: 'Гернси',
+        GH: 'Гана',
+        GI: 'Гибралтар',
+        GL: 'Гренландия',
+        GM: 'Гамбия',
+        GN: 'Гвинея',
+        GP: 'Гваделупа',
+        GQ: 'Экваториальная Гвинея',
+        GR: 'Греция',
+        GS: 'Южная Георгия',
+        GT: 'Гватемала',
+        GU: 'Гуам',
+        GW: 'Гвинея-Бисау',
+        GY: 'Гайана',
+        HK: 'Гонконг',
+        HM: 'Остров Херд',
+        HN: 'Гондурас',
+        HR: 'Хорватия',
+        HT: 'Гаити',
+        HU: 'Венгрия',
+        ID: 'Индонезия',
+        IE: 'Ирландия',
+        IL: 'Израиль',
+        IM: 'Остров Мэн',
+        IN: 'Индия',
+        IO: 'Британская территория',
+        IQ: 'Ирак',
+        IR: 'Иран',
+        IS: 'Исландия',
+        IT: 'Италия',
+        JE: 'Джерси',
+        JM: 'Ямайка',
+        JO: 'Иордания',
+        JP: 'Япония',
+        KE: 'Кения',
+        KG: 'Киргизия',
+        KH: 'Камбоджа',
+        KI: 'Кирибати',
+        KM: 'Коморы',
+        KN: 'Сент-Китс и Невис',
+        KP: 'КНДР',
+        KR: 'Южная Корея',
+        KW: 'Кувейт',
+        KY: 'Каймановы острова',
+        KZ: 'Казахстан',
+        LA: 'Лаос',
+        LB: 'Ливан',
+        LC: 'Сент-Люсия',
+        LI: 'Лихтенштейн',
+        LK: 'Шри-Ланка',
+        LR: 'Либерия',
+        LS: 'Лесото',
+        LT: 'Литва',
+        LU: 'Люксембург',
+        LV: 'Латвия',
+        LY: 'Ливия',
+        MA: 'Марокко',
+        MC: 'Монако',
+        MD: 'Молдова',
+        ME: 'Черногория',
+        MF: 'Сен-Мартен',
+        MG: 'Мадагаскар',
+        MH: 'Маршалловы острова',
+        MK: 'Северная Македония',
+        ML: 'Мали',
+        MM: 'Мьянма',
+        MN: 'Монголия',
+        MO: 'Макао',
+        MP: 'Северные Марианские острова',
+        MQ: 'Мартиника',
+        MR: 'Мавритания',
+        MS: 'Монтсеррат',
+        MT: 'Мальта',
+        MU: 'Маврикий',
+        MV: 'Мальдивы',
+        MW: 'Малави',
+        MX: 'Мексика',
+        MY: 'Малайзия',
+        MZ: 'Мозамбик',
+        NA: 'Намибия',
+        NC: 'Новая Каледония',
+        NE: 'Нигер',
+        NF: 'Остров Норфолк',
+        NG: 'Нигерия',
+        NI: 'Никарагуа',
+        NL: 'Нидерланды',
+        NO: 'Норвегия',
+        NP: 'Непал',
+        NR: 'Науру',
+        NU: 'Ниуэ',
+        NZ: 'Новая Зеландия',
+        OM: 'Оман',
+        PA: 'Панама',
+        PE: 'Перу',
+        PF: 'Французская Полинезия',
+        PG: 'Папуа-Новая Гвинея',
+        PH: 'Филиппины',
+        PK: 'Пакистан',
+        PL: 'Польша',
+        PM: 'Сен-Пьер и Микелон',
+        PN: 'Питкэрн',
+        PR: 'Пуэрто-Рико',
+        PS: 'Палестина',
+        PT: 'Португалия',
+        PW: 'Палау',
+        PY: 'Парагвай',
+        QA: 'Катар',
+        RE: 'Реюньон',
+        RO: 'Румыния',
+        RS: 'Сербия',
+        RU: 'Россия',
+        RW: 'Руанда',
+        SA: 'Саудовская Аравия',
+        SB: 'Соломоновы острова',
+        SC: 'Сейшелы',
+        SD: 'Судан',
+        SE: 'Швеция',
+        SG: 'Сингапур',
+        SH: 'Остров Святой Елены',
+        SI: 'Словения',
+        SJ: 'Шпицберген и Ян-Майен',
+        SK: 'Словакия',
+        SL: 'Сьерра-Леоне',
+        SM: 'Сан-Марино',
+        SN: 'Сенегал',
+        SO: 'Сомали',
+        SR: 'Суринам',
+        SS: 'Южный Судан',
+        ST: 'Сан-Томе и Принсипи',
+        SV: 'Сальвадор',
+        SX: 'Синт-Мартен',
+        SY: 'Сирия',
+        SZ: 'Эсватини',
+        TC: 'Теркс и Кайкос',
+        TD: 'Чад',
+        TF: 'Французские южные территории',
+        TG: 'Того',
+        TH: 'Таиланд',
+        TJ: 'Таджикистан',
+        TK: 'Токелау',
+        TL: 'Восточный Тимор',
+        TM: 'Туркменистан',
+        TN: 'Тунис',
+        TO: 'Тонга',
+        TR: 'Турция',
+        TT: 'Тринидад и Тобаго',
+        TV: 'Тувалу',
+        TW: 'Тайвань',
+        TZ: 'Танзания',
+        UA: 'Украина',
+        UG: 'Уганда',
+        UM: 'Внешние малые острова США',
+        US: 'США',
+        UY: 'Уругвай',
+        UZ: 'Узбекистан',
+        VA: 'Ватикан',
+        VC: 'Сент-Винсент и Гренадины',
+        VE: 'Венесуэла',
+        VG: 'Британские Виргинские острова',
+        VI: 'Виргинские острова США',
+        VN: 'Вьетнам',
+        VU: 'Вануату',
+        WF: 'Уоллис и Футуна',
+        WS: 'Самоа',
+        YE: 'Йемен',
+        YT: 'Майотта',
+        ZA: 'ЮАР',
+        ZM: 'Замбия',
+        ZW: 'Зимбабве',
+    }
+    return countries[countryCode] || countryCode
+}
+
+// Получение флага по коду страны
+function getCountryFlag(countryCode) {
+    if (!countryCode || countryCode.length !== 2) return '🌍'
+
+    const codePoints = countryCode
+        .toUpperCase()
+        .split('')
+        .map((char) => 127397 + char.charCodeAt())
+
+    return String.fromCodePoint(...codePoints)
+}
+
+// Проверка пинга прокси
+async function checkProxyPing(host, port) {
+    const key = `${host}:${port}`
+
+    // Если есть в кэше и не старше 5 минут
+    if (state.pingCache[key] && Date.now() - state.pingCache[key].timestamp < 300000) {
+        return state.pingCache[key].ping
+    }
+
+    try {
+        const start = performance.now()
+
+        // Пытаемся сделать запрос к http://httpbin.org/ip через прокси
+        // Но поскольку мы не можем напрямую использовать прокси в popup,
+        // будем использовать обычный пинг к хосту
+        await fetch(`http://${host}:${port}`, {
+            method: 'HEAD',
+            mode: 'no-cors',
+            signal: AbortSignal.timeout(5000),
+        })
+
+        const ping = Math.round(performance.now() - start)
+
+        state.pingCache[key] = {
+            ping: ping,
+            timestamp: Date.now(),
+        }
+
+        await saveProfiles()
+        return ping
+    } catch (error) {
+        // Если не удалось подключиться, возвращаем null
+        state.pingCache[key] = {
+            ping: null,
+            timestamp: Date.now(),
+        }
+        await saveProfiles()
+        return null
+    }
+}
+
+// Получение класса для пинга
+function getPingClass(ping) {
+    if (ping === null) return 'bad'
+    if (ping < 100) return 'good'
+    if (ping < 300) return 'medium'
+    return 'bad'
+}
+
+// Форматирование пинга
+function formatPing(ping) {
+    if (ping === null) return 'N/A'
+    return `${ping}ms`
 }
 
 // Обновление статуса
@@ -95,7 +471,7 @@ async function updateStatus() {
 }
 
 // Отрисовка профилей
-function renderProfiles() {
+async function renderProfiles() {
     if (state.profiles.length === 0) {
         elements.profilesList.innerHTML = `
             <div class="empty-state">
@@ -106,19 +482,24 @@ function renderProfiles() {
         return
     }
 
+    // Сначала рендерим без дополнительной информации
     elements.profilesList.innerHTML = state.profiles
         .map(
             (profile) => `
         <div class="profile-item ${profile.id === state.activeProfileId ? 'active' : ''}" 
              data-id="${profile.id}">
             <div class="profile-info">
-                <div class="profile-name">${escapeHtml(profile.name)}</div>
+                <div class="profile-name">
+                    ${escapeHtml(profile.name)}
+                </div>
                 <div class="profile-details">
-                    ${profile.type.toUpperCase()} ${profile.host}
-                    ${profile.username ? '🔐' : ''}
+                    <span class="country-flag" data-ip="${profile.host}">Загрузка...</span>
+                    <span>${profile.host}</span>
+                    <span class="ping-info" data-host="${profile.host}" data-port="${profile.port}">Проверка...</span>
                 </div>
             </div>
             <div class="profile-actions">
+                <button class="profile-btn copy-btn" data-id="${profile.id}" title="Копировать прокси">📋</button>
                 <button class="profile-btn edit-btn" data-id="${profile.id}" title="Редактировать">✎</button>
                 <button class="profile-btn delete-btn" data-id="${profile.id}" title="Удалить">×</button>
             </div>
@@ -129,6 +510,25 @@ function renderProfiles() {
 
     // Привязываем события к профилям
     bindProfileEvents()
+
+    // Асинхронно загружаем геолокацию и пинг
+    state.profiles.forEach(async (profile) => {
+        // Загружаем геолокацию
+        const geoInfo = await getCountryInfo(profile.host)
+        const flagElement = document.querySelector(`[data-ip="${profile.host}"]`)
+        if (flagElement) {
+            flagElement.textContent = geoInfo.countryName
+            flagElement.title = `${geoInfo.countryName} (${geoInfo.country})`
+        }
+
+        // Загружаем пинг
+        const ping = await checkProxyPing(profile.host, profile.port)
+        const pingElement = document.querySelector(`[data-host="${profile.host}"][data-port="${profile.port}"]`)
+        if (pingElement) {
+            pingElement.textContent = formatPing(ping)
+            pingElement.className = `ping-info ${getPingClass(ping)}`
+        }
+    })
 }
 
 // Привязка событий к профилям
@@ -139,6 +539,14 @@ function bindProfileEvents() {
             if (e.target.closest('.profile-actions')) return
             const profileId = item.dataset.id
             activateProfile(profileId)
+        })
+    })
+
+    // Кнопки копирования
+    elements.profilesList.querySelectorAll('.copy-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation()
+            copyProxy(btn.dataset.id)
         })
     })
 
@@ -183,14 +591,43 @@ async function activateProfile(profileId) {
     if (response.success) {
         state.activeProfileId = profileId
         await updateStatus()
-
-        if (profile.username && profile.password) {
-            showToast('Прокси подключен с авторизацией')
-        } else {
-            showToast('Прокси подключен')
-        }
+        // Убираем уведомления при активации
     } else {
         showToast('Ошибка подключения: ' + response.error, true)
+    }
+}
+
+// Копирование прокси в буфер обмена
+async function copyProxy(profileId) {
+    const profile = state.profiles.find((p) => p.id === profileId)
+    if (!profile) return
+
+    let proxyString = ''
+
+    if (profile.username && profile.password) {
+        // Формат с авторизацией: login:pass@ip:port
+        proxyString = `${profile.username}:${profile.password}@${profile.host}:${profile.port}`
+    } else {
+        // Формат без авторизации: ip:port
+        proxyString = `${profile.host}:${profile.port}`
+    }
+
+    try {
+        await navigator.clipboard.writeText(proxyString)
+        showToast('Прокси скопирован в буфер обмена')
+    } catch (error) {
+        // Fallback для старых браузеров
+        try {
+            const textArea = document.createElement('textarea')
+            textArea.value = proxyString
+            document.body.appendChild(textArea)
+            textArea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textArea)
+            showToast('Прокси скопирован в буфер обмена')
+        } catch (fallbackError) {
+            showToast('Ошибка копирования', true)
+        }
     }
 }
 
@@ -270,6 +707,7 @@ async function handleImport() {
     const lines = text.split('\n')
     const imported = []
     const errors = []
+    let profileCounter = 1
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim()
@@ -283,10 +721,10 @@ async function handleImport() {
                 continue
             }
 
-            // Создаем профиль
+            // Создаем профиль с нумерацией
             const profile = {
                 id: Date.now().toString() + Math.random(),
-                name: `Импорт ${parsed.host}:${parsed.port}`,
+                name: `Профиль ${profileCounter}`,
                 type: 'http',
                 host: parsed.host,
                 port: parsed.port.toString(),
@@ -298,6 +736,7 @@ async function handleImport() {
             const duplicate = state.profiles.find((p) => p.host === profile.host && p.port === profile.port)
             if (!duplicate) {
                 imported.push(profile)
+                profileCounter++
             }
         } else {
             errors.push(`Строка ${i + 1}: неверный формат`)
