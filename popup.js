@@ -23,8 +23,8 @@ let state = {
     profiles: [],
     activeProfileId: null,
     editingId: null,
-    geoCache: {}, // Кэш для геолокации
-    pingCache: {}, // Кэш для пинга
+    geoCache: {},
+    pingCache: {},
 }
 
 // Инициализация
@@ -34,6 +34,16 @@ async function init() {
     await loadVersion()
     await loadProfiles()
     await updateStatus()
+
+    // Запускаем пинги только при открытии и только при прямом подключении
+    const proxyStatus = await chrome.runtime.sendMessage({ action: 'getStatus' })
+    if (!proxyStatus.isActive) {
+        console.log('⏱️ Ждем стабилизации сетевых настроек...')
+        setTimeout(async () => {
+            await updatePings()
+        }, 500) // Небольшая задержка при инициализации
+    }
+
     bindEvents()
 }
 
@@ -88,23 +98,22 @@ async function getCountryInfo(ip) {
     }
 
     try {
-        // Fallback к ipinfo.io
-        const response2 = await fetch(`https://ipinfo.io/${ip}/json`)
-        if (response2.ok) {
-            const data2 = await response2.json()
-            if (data2.country) {
+        const response = await fetch(`https://ipinfo.io/${ip}/json`)
+        if (response.ok) {
+            const data = await response.json()
+            if (data.country) {
                 const result = {
-                    country: data2.country,
-                    countryName: getCountryName(data2.country),
-                    flagUrl: getFlagUrl(data2.country),
+                    country: data.country,
+                    countryName: getCountryName(data.country),
+                    flagUrl: getFlagUrl(data.country),
                 }
                 state.geoCache[ip] = result
                 await saveProfiles()
                 return result
             }
         }
-    } catch (error2) {
-        console.log('Ошибка ipinfo.io:', error2)
+    } catch (error) {
+        console.log('Ошибка ipinfo.io:', error)
     }
 
     return { country: 'UN', countryName: 'Неизвестно', flagUrl: getFlagUrl('UN') }
@@ -113,7 +122,7 @@ async function getCountryInfo(ip) {
 // Получение URL флага по коду страны
 function getFlagUrl(countryCode) {
     if (!countryCode || countryCode.length !== 2) {
-        return 'https://flagcdn.com/w20/un.png' // Флаг ООН для неизвестных стран
+        return 'https://flagcdn.com/w20/un.png'
     }
     return `https://flagcdn.com/w20/${countryCode.toLowerCase()}.png`
 }
@@ -374,19 +383,12 @@ function getCountryName(countryCode) {
     return countries[countryCode] || countryCode
 }
 
-// Улучшенная проверка пинга прокси
-async function checkProxyPing(host, port) {
+// Прямая проверка пинга (без проверки статуса прокси)
+async function directPingCheck(host, port, retryCount = 0) {
     const key = `${host}:${port}`
-
-    // Если есть в кэше и не старше 2 минут
-    if (state.pingCache[key] && Date.now() - state.pingCache[key].timestamp < 120000) {
-        return state.pingCache[key].ping
-    }
 
     try {
         const start = performance.now()
-
-        // Используем более надежный способ проверки доступности хоста
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 3000)
 
@@ -403,14 +405,20 @@ async function checkProxyPing(host, port) {
             return ping
         } catch (fetchError) {
             clearTimeout(timeout)
-            // Если обычный fetch не работает, используем симуляцию
+
+            // Если ошибка связана с прокси и это первая попытка, пробуем еще раз
+            if (fetchError.message.includes('PROXY') && retryCount < 2) {
+                console.log(`⚠️ Ошибка прокси для ${host}:${port}, повтор ${retryCount + 1}/2`)
+                await new Promise((resolve) => setTimeout(resolve, 1000)) // Ждем 1 секунду
+                return await directPingCheck(host, port, retryCount + 1)
+            }
+
             const simulatedPing = simulatePingByLocation(host)
             state.pingCache[key] = { ping: simulatedPing, timestamp: Date.now() }
             await saveProfiles()
             return simulatedPing
         }
     } catch (error) {
-        // Fallback к симуляции
         const simulatedPing = simulatePingByLocation(host)
         state.pingCache[key] = { ping: simulatedPing, timestamp: Date.now() }
         await saveProfiles()
@@ -418,11 +426,35 @@ async function checkProxyPing(host, port) {
     }
 }
 
+// Проверка пинга прокси (с учетом статуса)
+async function checkProxyPing(host, port) {
+    const key = `${host}:${port}`
+
+    // Проверяем, есть ли активный прокси
+    const proxyStatus = await chrome.runtime.sendMessage({ action: 'getStatus' })
+
+    // Если есть активный прокси, используем только кэш или показываем N/A
+    if (proxyStatus.isActive) {
+        if (state.pingCache[key] && Date.now() - state.pingCache[key].timestamp < 300000) {
+            // 5 минут кэш
+            return state.pingCache[key].ping
+        }
+        return null // Показать N/A
+    }
+
+    // Если прямое подключение, проверяем кэш (2 минуты)
+    if (state.pingCache[key] && Date.now() - state.pingCache[key].timestamp < 120000) {
+        return state.pingCache[key].ping
+    }
+
+    // Выполняем прямую проверку
+    return await directPingCheck(host, port)
+}
+
 // Симуляция пинга на основе геолокации
 function simulatePingByLocation(host) {
-    // Простая симуляция пинга на основе IP адреса
     const lastOctet = parseInt(host.split('.').pop() || '0')
-    return 50 + (lastOctet % 200) // Симуляция от 50 до 250ms
+    return 50 + (lastOctet % 200)
 }
 
 // Получение класса для пинга
@@ -441,12 +473,22 @@ function formatPing(ping) {
 
 // Обновление статуса
 async function updateStatus() {
+    // Сначала принудительно синхронизируем состояние
+    await chrome.runtime.sendMessage({ action: 'syncState' })
+
+    // Затем получаем актуальный статус
     const response = await chrome.runtime.sendMessage({ action: 'getStatus' })
+    const wasActive = state.activeProfileId !== null
 
     if (response.isActive && response.activeProfile) {
-        elements.status.innerHTML = `Подключен: <span class="status-profile">${escapeHtml(
+        // Получаем информацию о стране для флага
+        const geoInfo = await getCountryInfo(response.activeProfile.host)
+
+        elements.status.innerHTML = `Подключен: <img class="country-flag" src="${geoInfo.flagUrl}" alt="${geoInfo.country}" title="${
+            geoInfo.countryName
+        }" style="width: 20px; height: 15px; margin-right: 6px; border-radius: 2px; border: 1px solid var(--border);"> <span class="status-profile">${escapeHtml(
             response.activeProfile.name
-        )}</span> <span class="status-ip">(${response.activeProfile.host})</span>`
+        )}</span>`
         elements.status.className = 'status active'
         elements.toggleBtn.className = 'toggle-btn'
         elements.toggleBtn.textContent = '×'
@@ -457,12 +499,43 @@ async function updateStatus() {
         elements.status.className = 'status'
         elements.toggleBtn.className = 'toggle-btn hidden'
         state.activeProfileId = null
+
+        // Если переключились на прямое подключение, ждем и запускаем пинги
+        if (wasActive) {
+            console.log('⏱️ Ждем очистки настроек прокси...')
+            setTimeout(async () => {
+                await updatePings()
+            }, 1500) // Задержка 1.5 секунды
+        }
     }
 
-    // Обновляем badge в background
-    await chrome.runtime.sendMessage({ action: 'updateBadge' })
-
     renderProfiles()
+}
+
+// Обновление пингов для всех профилей
+async function updatePings() {
+    if (state.profiles.length === 0) return
+
+    console.log('🏓 Обновляем пинги профилей...')
+
+    // Запускаем прямые пинги для всех профилей (мы знаем что прямое подключение)
+    const pingPromises = state.profiles.map(async (profile) => {
+        try {
+            const ping = await directPingCheck(profile.host, profile.port)
+            const pingElement = document.querySelector(`[data-host="${profile.host}"][data-port="${profile.port}"]`)
+            if (pingElement) {
+                pingElement.textContent = formatPing(ping)
+                pingElement.className = `ping-info ${getPingClass(ping)}`
+                pingElement.title = `Пинг: ${formatPing(ping)}`
+            }
+            console.log(`✅ Пинг для ${profile.host}:${profile.port} = ${ping}ms`)
+        } catch (error) {
+            console.log('❌ Ошибка проверки пинга для', profile.host, error)
+        }
+    })
+
+    await Promise.all(pingPromises)
+    console.log('✅ Все пинги обновлены')
 }
 
 // Отрисовка профилей
@@ -477,7 +550,6 @@ async function renderProfiles() {
         return
     }
 
-    // Рендерим профили с изображениями флагов
     elements.profilesList.innerHTML = state.profiles
         .map(
             (profile) => `
@@ -505,12 +577,10 @@ async function renderProfiles() {
         )
         .join('')
 
-    // Привязываем события к профилям
     bindProfileEvents()
 
-    // Асинхронно загружаем геолокацию и пинг
+    // Асинхронно загружаем только геолокацию (без пингов)
     state.profiles.forEach(async (profile) => {
-        // Загружаем геолокацию и устанавливаем флаг
         try {
             const geoInfo = await getCountryInfo(profile.host)
             const flagElement = document.querySelector(`img[data-ip="${profile.host}"]`)
@@ -524,33 +594,30 @@ async function renderProfiles() {
             console.log('Ошибка загрузки геолокации для', profile.host, error)
         }
 
-        // Загружаем пинг
-        try {
-            const ping = await checkProxyPing(profile.host, profile.port)
+        // Показываем кэшированный пинг если есть
+        const pingKey = `${profile.host}:${profile.port}`
+        if (state.pingCache[pingKey]) {
             const pingElement = document.querySelector(`[data-host="${profile.host}"][data-port="${profile.port}"]`)
             if (pingElement) {
-                pingElement.textContent = formatPing(ping)
-                pingElement.className = `ping-info ${getPingClass(ping)}`
-                pingElement.title = `Пинг: ${formatPing(ping)}`
+                const cachedPing = state.pingCache[pingKey].ping
+                pingElement.textContent = formatPing(cachedPing)
+                pingElement.className = `ping-info ${getPingClass(cachedPing)}`
+                pingElement.title = `Пинг: ${formatPing(cachedPing)} (кэш)`
             }
-        } catch (error) {
-            console.log('Ошибка проверки пинга для', profile.host, error)
         }
     })
 }
 
 // Привязка событий к профилям
 function bindProfileEvents() {
-    // Клик по профилю - активация
-    elements.profilesList.querySelectorAll('.profile-info').forEach((item) => {
+    // Клик по всему профилю для активации
+    elements.profilesList.querySelectorAll('.profile-item').forEach((item) => {
         item.addEventListener('click', (e) => {
-            const profileItem = item.closest('.profile-item')
-            const profileId = profileItem.dataset.id
+            const profileId = item.dataset.id
             activateProfile(profileId)
         })
     })
 
-    // Кнопки копирования
     elements.profilesList.querySelectorAll('.copy-btn').forEach((btn) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation()
@@ -558,7 +625,6 @@ function bindProfileEvents() {
         })
     })
 
-    // Кнопки редактирования
     elements.profilesList.querySelectorAll('.edit-btn').forEach((btn) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation()
@@ -566,7 +632,6 @@ function bindProfileEvents() {
         })
     })
 
-    // Кнопки удаления
     elements.profilesList.querySelectorAll('.delete-btn').forEach((btn) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation()
@@ -578,9 +643,8 @@ function bindProfileEvents() {
 // Переключение прокси
 async function toggleProxy() {
     if (state.activeProfileId) {
-        // Отключаем прокси
         await chrome.runtime.sendMessage({ action: 'disableProxy' })
-        await updateStatus()
+        await updateStatus() // updateStatus уже содержит логику запуска пингов при отключении
     }
 }
 
@@ -664,7 +728,6 @@ function parseProxyString(line) {
     line = line.trim()
     if (!line) return null
 
-    // Формат: user:pass@ip:port
     let match = line.match(/^(.+?):(.+?)@(.+?):(\d+)$/)
     if (match) {
         return {
@@ -675,7 +738,6 @@ function parseProxyString(line) {
         }
     }
 
-    // Формат: ip:port:user:pass
     match = line.match(/^(.+?):(\d+):(.+?):(.+?)$/)
     if (match) {
         return {
@@ -686,7 +748,6 @@ function parseProxyString(line) {
         }
     }
 
-    // Формат: ip:port
     match = line.match(/^(.+?):(\d+)$/)
     if (match) {
         return {
