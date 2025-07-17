@@ -15,7 +15,38 @@ chrome.runtime.onStartup.addListener(initExtension)
 async function initExtension() {
     // Синхронизируем состояние с реальными настройками Chrome
     await syncProxyState()
+    await initWebRTCProtection()
     updateBadge()
+}
+
+// Инициализация WebRTC защиты
+async function initWebRTCProtection() {
+    try {
+        const result = await chrome.storage.local.get(['webrtcBlocked'])
+        const isBlocked = result.webrtcBlocked !== false // По умолчанию включено
+
+        if (isBlocked) {
+            await setWebRTCPolicy('disable_non_proxied_udp')
+            console.log('🛡️ WebRTC защита инициализирована')
+        }
+    } catch (error) {
+        console.log('⚠️ WebRTC API недоступен:', error)
+    }
+}
+
+// Настройка WebRTC политики через Chrome Privacy API
+async function setWebRTCPolicy(policy) {
+    try {
+        if (chrome.privacy && chrome.privacy.network && chrome.privacy.network.webRTCIPHandlingPolicy) {
+            await chrome.privacy.network.webRTCIPHandlingPolicy.set({
+                value: policy,
+                scope: 'regular',
+            })
+            console.log('✅ WebRTC политика установлена:', policy)
+        }
+    } catch (error) {
+        console.log('⚠️ Не удалось установить WebRTC политику:', error)
+    }
 }
 
 // Проверка и синхронизация состояния прокси с Chrome
@@ -159,6 +190,26 @@ async function disableProxy() {
     }
 }
 
+// Управление WebRTC защитой
+async function toggleWebRTCProtection(enabled) {
+    try {
+        await chrome.storage.local.set({ webrtcBlocked: enabled })
+
+        if (enabled) {
+            await setWebRTCPolicy('disable_non_proxied_udp')
+            console.log('🛡️ WebRTC защита включена')
+        } else {
+            await setWebRTCPolicy('default')
+            console.log('🔓 WebRTC защита отключена')
+        }
+
+        return { success: true }
+    } catch (error) {
+        console.error('❌ Ошибка управления WebRTC:', error)
+        return { success: false, error: error.message }
+    }
+}
+
 // Настройка авторизации через declarativeNetRequest
 async function setupAuthRules(username, password) {
     try {
@@ -287,11 +338,14 @@ chrome.proxy.onProxyError.addListener((details) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.action) {
         case 'getStatus':
-            sendResponse({
-                isActive: proxyState.isActive,
-                activeProfile: proxyState.activeProfile,
+            chrome.storage.local.get(['webrtcBlocked']).then((result) => {
+                sendResponse({
+                    isActive: proxyState.isActive,
+                    activeProfile: proxyState.activeProfile,
+                    webrtcBlocked: result.webrtcBlocked !== false,
+                })
             })
-            break
+            return true
 
         case 'applyProxy':
             applyProxy(request.profile).then(sendResponse)
@@ -299,6 +353,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case 'disableProxy':
             disableProxy().then(sendResponse)
+            return true
+
+        case 'toggleWebRTC':
+            toggleWebRTCProtection(request.enabled).then(sendResponse)
             return true
 
         case 'updateBadge':
@@ -315,6 +373,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 })
 
-console.log('Simple Proxy Manager загружен')
+console.log('Simple Proxy Manager с WebRTC защитой загружен')
 console.log('Динамический badge: желтый (отключен) / зеленый (включен)')
-console.log('Добавлена синхронизация состояния с Chrome API')
+console.log('WebRTC защита: активируется автоматически')

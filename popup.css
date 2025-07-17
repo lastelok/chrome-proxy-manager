@@ -90,35 +90,23 @@ textarea {
     border: 1px solid var(--border);
 }
 
-.toggle-btn {
-    width: 40px;
-    height: 40px;
-    border: none;
-    border-radius: 50%;
-    background: var(--danger);
-    color: white;
-    font-size: 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.toggle-btn:hover {
-    transform: scale(1.05);
-}
-
-.toggle-btn.hidden {
-    display: none;
-}
-
-/* Статус */
+/* Статус с кнопкой отключения */
 .status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 12px;
     background: var(--bg-secondary);
     border-radius: var(--radius);
     margin-bottom: 16px;
-    text-align: center;
     font-size: 14px;
     color: var(--text-secondary);
+}
+
+.status .status-text {
+    flex: 1;
+    display: flex;
+    align-items: center;
 }
 
 .status.active {
@@ -134,6 +122,42 @@ textarea {
 .status-ip {
     color: var(--warning);
     font-weight: 500;
+}
+
+/* Флаг в статусе */
+.status .country-flag {
+    width: 20px;
+    height: 15px;
+    object-fit: cover;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    margin-right: 3px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* Кнопка отключения в статусе */
+.toggle-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    background: var(--danger);
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+.toggle-btn:hover {
+    transform: scale(1.05);
+}
+
+.toggle-btn.hidden {
+    display: none;
 }
 
 /* Профили */
@@ -171,11 +195,27 @@ textarea {
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.2s ease;
 }
 
 .import-btn {
     font-size: 14px;
     background: var(--text-secondary);
+}
+
+.import-btn:hover {
+    background: var(--primary);
+    transform: scale(1.05);
+}
+
+#refreshPingBtn {
+    background: var(--warning);
+    font-size: 12px;
+}
+
+#refreshPingBtn:hover {
+    background: var(--success);
+    transform: scale(1.05);
 }
 
 .profiles-list {

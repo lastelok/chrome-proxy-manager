@@ -5,6 +5,107 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Simple Proxy Manager</title>
         <link rel="stylesheet" href="popup.css" />
+        <style>
+            /* WebRTC Toggle в header */
+            .webrtc-header {
+                display: flex;
+                align-items: center;
+            }
+
+            .webrtc-header .toggle-label {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 500;
+            }
+
+            .webrtc-header .toggle-label input[type='checkbox'] {
+                display: none;
+            }
+
+            .webrtc-header .toggle-slider {
+                position: relative;
+                width: 32px;
+                height: 18px;
+                background: var(--border);
+                border-radius: 9px;
+                transition: all 0.3s ease;
+            }
+
+            .webrtc-header .toggle-slider:before {
+                content: '';
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 14px;
+                height: 14px;
+                background: white;
+                border-radius: 50%;
+                transition: all 0.3s ease;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            }
+
+            .webrtc-header .toggle-label input[type='checkbox']:checked + .toggle-slider {
+                background: var(--success);
+            }
+
+            .webrtc-header .toggle-label input[type='checkbox']:checked + .toggle-slider:before {
+                transform: translateX(14px);
+            }
+
+            .webrtc-header .toggle-text {
+                user-select: none;
+                -webkit-user-select: none;
+                font-size: 14px;
+            }
+
+            /* Обновленные стили статуса */
+            .status {
+                display: flex !important;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px;
+                background: var(--bg-secondary);
+                border-radius: var(--radius);
+                margin-bottom: 16px;
+                font-size: 14px;
+                color: var(--text-secondary);
+            }
+
+            .status .status-text {
+                flex: 1;
+            }
+
+            /* Кнопка переключения в статусе */
+            .status .toggle-btn {
+                width: 28px;
+                height: 28px;
+                border: none;
+                border-radius: 50%;
+                background: var(--danger);
+                color: white;
+                font-size: 16px;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-left: 8px;
+                flex-shrink: 0;
+            }
+
+            .status .toggle-btn:hover {
+                transform: scale(1.05);
+            }
+
+            .status .toggle-btn.hidden {
+                display: none !important;
+            }
+
+            /* Скрываем старую кнопку из header если она осталась */
+            .header .toggle-btn {
+                display: none !important;
+            }
+        </style>
     </head>
     <body>
         <div class="container">
@@ -16,12 +117,20 @@
                         <span id="version" class="version"></span>
                     </div>
                 </div>
-                <button id="toggleBtn" class="toggle-btn hidden">●</button>
+                <!-- WebRTC защита в header -->
+                <div class="webrtc-header">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="webrtcToggle" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">🛡️</span>
+                    </label>
+                </div>
             </header>
 
             <!-- Статус -->
             <div id="status" class="status">
                 <span class="status-text">Проверка статуса...</span>
+                <button id="toggleBtn" class="toggle-btn hidden">×</button>
             </div>
 
             <!-- Список профилей -->
