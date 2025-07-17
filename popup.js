@@ -582,9 +582,8 @@ function addPingRefreshButton() {
         const refreshBtn = document.createElement('button')
         refreshBtn.id = 'refreshPingBtn'
         refreshBtn.className = 'import-btn'
-        refreshBtn.innerHTML = '🔄'
+        refreshBtn.innerHTML = '↻' // Заменил emoji на более стильный символ
         refreshBtn.title = 'Обновить пинги'
-        refreshBtn.style.marginRight = '4px'
 
         refreshBtn.addEventListener('click', async () => {
             refreshBtn.style.transform = 'rotate(360deg)'
@@ -719,7 +718,7 @@ async function renderProfiles() {
                 </div>
                 <div class="profile-details">
                     <span>${profile.host}</span>
-                    <span class="ping-info" data-host="${profile.host}" data-port="${profile.port}" title="Нажмите 🔄 для обновления">⏱</span>
+                    <span class="ping-info" data-host="${profile.host}" data-port="${profile.port}" title="Нажмите ↻ для обновления">⏱</span>
                 </div>
             </div>
             <div class="profile-actions">
@@ -915,7 +914,9 @@ async function handleImport() {
     const lines = text.split('\n')
     const imported = []
     const errors = []
-    let profileCounter = 1
+
+    // Исправление: начинаем счетчик с количества существующих профилей + 1
+    let profileCounter = state.profiles.length + 1
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim()
@@ -941,7 +942,7 @@ async function handleImport() {
             const duplicate = state.profiles.find((p) => p.host === profile.host && p.port === profile.port)
             if (!duplicate) {
                 imported.push(profile)
-                profileCounter++
+                profileCounter++ // Увеличиваем счетчик только для успешно добавленных профилей
             }
         } else {
             errors.push(`Строка ${i + 1}: неверный формат`)
