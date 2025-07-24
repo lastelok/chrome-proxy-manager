@@ -1,10 +1,10 @@
 {
     "manifest_version": 3,
     "name": "Proxy Manager",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "Простое управление прокси-соединениями с защитой от WebRTC",
     "minimum_chrome_version": "108",
-    "permissions": ["proxy", "storage", "declarativeNetRequest", "webRequest", "webRequestAuthProvider", "privacy", "contentSettings"],
+    "permissions": ["proxy", "storage", "declarativeNetRequest", "webRequest", "webRequestAuthProvider", "privacy"],
     "host_permissions": ["<all_urls>"],
     "background": {
         "service_worker": "background.js"
