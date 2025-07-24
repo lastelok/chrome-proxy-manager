@@ -478,7 +478,7 @@ async function checkHTTPConnection(host, port) {
 
     try {
         // Проверяем доступность через публичный сервис
-        const testUrl = 'https://httpbin.org/ip'
+        const testUrl = 'https://postman-echo.com/get'
 
         // Имитируем подключение через прокси (для демонстрации скорости)
         await fetch(testUrl, {
